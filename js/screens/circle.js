@@ -11,6 +11,8 @@ import { mountGlobe } from "../globe.js";
 import { reverseGeocode } from "../geo.js";
 import { groupsCard } from "./groups.js";
 
+import { parsePeople, inviteToken, shareURL } from "../share-links.js";
+
 let friendGlobe = null;
 
 function closeFriendGlobe() {
@@ -220,11 +222,70 @@ function choiceChips(label, options, initial, format) {
   return { element: el("div", { class: "field" }, el("span", { class: "label" }, label), row), get: () => value };
 }
 
+/** Explicitly labelled link and full join code, also available for existing invites. */
+function linkDetails(token, kind) {
+  const link = shareURL(kind, token);
+  const field = (label, value) => {
+    const input = el("input", { type: "text", value, readonly: "readonly", "aria-label": label, class: "share-value" });
+    const copy = el("button", { class: "secondary", type: "button" }, `Copy ${label.toLowerCase()}`);
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(value); toast(`${label} copied`, "ok"); }
+      catch { input.focus(); input.select(); toast("Select and copy the text shown above."); }
+    };
+    return el("div", { class: "stack" }, el("label", { class: "field" }, el("span", { class: "label" }, label), input), copy);
+  };
+  return el("div", { class: "stack" }, field(kind === "view" ? "View-only link" : "Invite link", link),
+    kind === "join" ? field("Join code", token) : null);
+}
+
+function guestLinkControls() {
+  const expiry = choiceChips("View link works for", [1, 3, 7, 14, 30], 7, d => `${d} days`);
+  const result = el("div", { class: "stack" });
+  const list = el("div", { class: "stack" });
+  const status = el("p", { class: "dim", role: "status" });
+  const create = el("button", { class: "secondary", type: "button" }, "Create a view-only link");
+  const setupError = e => ["42P01", "PGRST202", "PGRST205"].includes(e?.code)
+    ? "View-only links aren't enabled on this server yet. The database update needs to be installed."
+    : e?.message || "Couldn't load view links. Try again.";
+  async function draw() {
+    try {
+      const links = await data.myViewLinks();
+      fill(list, links.length ? el("h4", {}, "Active view-only links") : null, links.map(link => {
+        const cancel = el("button", { class: "ghost", type: "button" }, "Cancel view-only link");
+        cancel.onclick = async () => {
+          cancel.disabled = true;
+          try { await data.cancelViewLink(link.token); fill(result); toast("View link cancelled", "ok"); await draw(); }
+          catch (e) { status.textContent = setupError(e); cancel.disabled = false; }
+        };
+        return el("div", { class: "card stack" },
+          el("p", { class: "dim" }, `Expires ${new Date(link.expires_at).toLocaleDateString()}`),
+          linkDetails(link.token, "view"), cancel);
+      }));
+    } catch (e) { status.textContent = setupError(e); }
+  }
+  create.onclick = async () => {
+    create.disabled = true; status.textContent = "";
+    try {
+      const link = await data.createViewLink(expiry.get());
+      fill(result, el("p", {}, "Your view-only link is ready."), linkDetails(link.token, "view"));
+      await draw();
+    } catch (e) { status.textContent = setupError(e); }
+    finally { create.disabled = false; }
+  };
+  draw();
+  return el("section", { class: "card stack" }, el("h3", {}, "Share without an account"),
+    el("p", {}, "Anyone with this link can view your name and this trip's check-in places, dates and approximate map positions. New check-ins on the same trip appear too."),
+    el("p", { class: "dim" }, "View only: no joining or editing. Photos, messages, live location, other trips and plans aren't included. It expires automatically, and you can cancel it here."),
+    expiry.element, create, status, result, list);
+}
+
 function inviteSheet(reload) {
   const output = el("div", { class: "stack" });
   const activeList = el("div", { class: "stack" });
   const days = choiceChips("Link works for", [1, 3, 7, 14, 30], 7, (d) => (d === 1 ? "1 day" : `${d} days`));
-  const people = choiceChips("How many people can join with it", [1, 2, 3, 5, 10], 1, (n) => (n === 1 ? "1 person" : `${n} people`));
+  const people = el("input", { type: "number", min: "1", max: "20", step: "1", value: "1", required: "required", inputmode: "numeric", "aria-label": "Number of people" });
+  const peopleField = el("label", { class: "field" }, el("span", { class: "label" }, "Number of people"), people,
+    el("small", { class: "dim" }, "Enter a whole number from 1 to 20."));
 
   const drawActive = async () => {
     const invites = await data.myInvites().catch(() => []);
@@ -237,11 +298,11 @@ function inviteSheet(reload) {
           try { await data.cancelInvite(invite.token); toast("Link cancelled. Nobody new can join with it.", "ok"); drawActive(); }
           catch (error) { toast(error.message, "error"); cancel.disabled = false; }
         };
-        return el("div", { class: "list-row rowline" },
+        return el("div", { class: "list-row stack" },
           el("div", {},
             el("div", { style: "font-weight:700" }, `${invite.use_count} of ${invite.max_uses} joined`),
             el("div", { class: "dim" }, `Until ${new Date(invite.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })} · …${invite.token.slice(-6)}`)),
-          cancel);
+          linkDetails(invite.token, "join"), cancel);
       }));
   };
 
@@ -249,37 +310,28 @@ function inviteSheet(reload) {
   create.onclick = async () => {
     create.disabled = true;
     try {
-      const invite = await data.createInvite({ days: days.get(), people: people.get() });
-      const link = `${location.origin}${location.pathname}#join=${invite.token}`;
-      const box = el("input", { type: "text", value: link, readonly: "readonly" });
-      const copy = el("button", { class: "secondary" }, "Copy link");
-      copy.onclick = async () => {
-        // Don't trust a quiet success: copy, then say so only if it worked.
-        let copied = false;
-        try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
-        if (copied) toast("Link copied", "ok");
-        else { box.select(); toast("Couldn't copy automatically. The link is selected: press ⌘C or long-press to copy."); }
-      };
+      if (!people.reportValidity()) return;
+      const invite = await data.createInvite({ days: days.get(), people: parsePeople(people.value) });
       const who = invite.max_uses === 1 ? "one person" : `up to ${invite.max_uses} people`;
       fill(output,
         el("p", { class: "dim" },
           `Works for ${who} until ${new Date(invite.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })}. Anyone holding it can join, so send it only to them. Each person can use it once: if you remove someone, this link won't let them back in.`),
-        box, copy);
+        linkDetails(invite.token, "join"));
       drawActive();
       reload();
     } catch (error) { toast(error.message, "error"); }
-    create.disabled = false;
+    finally { create.disabled = false; }
   };
 
   const code = el("input", { type: "text", placeholder: "Paste an invite link or code" });
   const join = el("button", { class: "secondary" }, "Join their circle");
   join.onclick = async () => {
-    const match = code.value.match(/[0-9a-f-]{36}/i);
-    if (!match) { toast("That doesn't look like an invite code", "error"); return; }
+    const token = inviteToken(code.value);
+    if (!token) { toast("That doesn't look like an invite code", "error"); return; }
     join.disabled = true;
     if (/group=/.test(code.value)) {            // a travel-group link pasted here
       try {
-        const outcome = await data.joinGroup(match[0]);
+        const outcome = await data.joinGroup(token);
         if (outcome === "ok") { toast("You've joined the travel group", "ok"); closeSheet(); reload(); }
         else toast(data.groupProblem(outcome), "error");
       } catch (error) { toast(error.message, "error"); }
@@ -287,7 +339,7 @@ function inviteSheet(reload) {
       return;
     }
     try {
-      const outcome = await data.redeemInvite(match[0]);
+      const outcome = await data.redeemInvite(token);
       if (outcome === "ok") { toast("You've joined their circle", "ok"); closeSheet(); reload(); }
       else toast(data.inviteProblem(outcome), "error");
     } catch (error) { toast(error.message, "error"); }
@@ -297,8 +349,9 @@ function inviteSheet(reload) {
   openSheet("Invites",
     el("div", { class: "stack" },
       el("h3", {}, "Invite someone to follow me"),
-      days.element, people.element,
+      days.element, peopleField,
       create, output, activeList,
+      guestLinkControls(),
       el("h3", { style: "margin-top:10px" }, "Follow someone else"),
       code, join));
   drawActive();

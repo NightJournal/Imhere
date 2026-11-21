@@ -392,6 +392,14 @@ async function boot() {
     return;
   }
 
+  // Guest links bypass sign-in, invite redemption, the outbox and live location.
+  const viewToken = new URLSearchParams(location.hash.slice(1)).get("view");
+  if (viewToken !== null) {
+    const { renderSharedTrip } = await import("./screens/shared-trip.js");
+    await renderSharedTrip($("screen"), viewToken);
+    return;
+  }
+
   decorateNav();
 
   // An invite link (…/#join=<token>) is remembered until after sign-in.

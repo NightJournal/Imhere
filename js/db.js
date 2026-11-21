@@ -3,6 +3,7 @@
 // and never touch the client directly, so if the backend moves
 // (hosted -> self-hosted) only this file changes.
 // ---------------------------------------------------------------
+import { parsePeople } from "./share-links.js";
 import { SUPABASE_URL, SUPABASE_KEY, PHOTO_BUCKET } from "./config.js";
 
 // supabase-js is loaded as a plain <script> in index.html and lives on window.
@@ -308,7 +309,7 @@ export async function createInvite({ days = 7, people = 1 } = {}) {
   const user = await currentUser();
   const expires = new Date(Date.now() + Math.min(30, Math.max(1, days)) * 86400_000 - 60_000);
   return unwrap(await db.from("circle_invites")
-    .insert({ owner_id: user.id, expires_at: expires.toISOString(), max_uses: Math.min(20, Math.max(1, people)) })
+    .insert({ owner_id: user.id, expires_at: expires.toISOString(), max_uses: parsePeople(people) })
     .select().single());
 }
 
@@ -420,7 +421,7 @@ export async function createGroup(name, endsAt) {
 
 export async function createGroupInvite(groupId, people = 1) {
   return unwrap(await db.from("group_invites")
-    .insert({ group_id: groupId, max_uses: Math.min(20, Math.max(1, people)) }).select().single());
+    .insert({ group_id: groupId, max_uses: parsePeople(people) }).select().single());
 }
 
 export async function groupInvites(groupId) {
@@ -570,4 +571,29 @@ export async function deletePoster(poster) {
   const paths = [poster.poster_path].filter(Boolean);
   if (paths.length) await db.storage.from(POSTER_BUCKET).remove(paths);
   return unwrap(await db.from("posters").delete().eq("id", poster.id));
+}
+
+// Guest viewing is a dedicated projection, never anonymous access to base tables.
+export async function createViewLink(days = 7) {
+  return unwrap(await db.rpc("create_trip_view_link", { valid_days: days }));
+}
+export async function myViewLinks() {
+  const user = await currentUser();
+  return unwrap(await db.from("trip_view_links").select("token, trip_id, created_at, expires_at")
+    .eq("owner_id", user.id).gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })) || [];
+}
+export async function cancelViewLink(token) {
+  const user = await currentUser();
+  return unwrap(await db.from("trip_view_links").delete().eq("token", token).eq("owner_id", user.id));
+}
+export async function readSharedTrip(token) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) return null;
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_shared_trip`, {
+    method: "POST", cache: "no-store", referrerPolicy: "no-referrer",
+    headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ view_token: token }),
+  });
+  if (!response.ok) throw new Error("Couldn't load shared trip");
+  return response.json();
 }
