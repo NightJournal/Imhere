@@ -399,6 +399,32 @@ export async function friendLive(ownerID) {
   };
 }
 
+// ============================================================ delete account
+// 1) remove the person's files (photo, profile picture, every poster) —
+//    storage files can only be removed through the storage API;
+// 2) delete the login, which deletes every database row with it.
+
+export async function deleteMyAccount() {
+  const user = await currentUser();
+  if (!user) throw new Error("Not signed in.");
+  const remove = async (bucket, paths) => {
+    if (!paths.length) return;
+    const { error } = await db.storage.from(bucket).remove(paths);
+    if (error) throw error;
+  };
+  await remove(PHOTO_BUCKET, [`${user.id}.jpg`]);
+  await remove("avatars", [`${user.id}.jpg`]);
+  for (;;) {   // posters live in a folder named after the user; 100 per page
+    const { data: files, error } = await db.storage.from("posters").list(user.id, { limit: 100 });
+    if (error) throw error;
+    if (!files?.length) break;
+    await remove("posters", files.map((f) => `${user.id}/${f.name}`));
+    if (files.length < 100) break;
+  }
+  unwrap(await db.rpc("delete_my_account"));
+  await db.auth.signOut({ scope: "local" }).catch(() => {});
+}
+
 // ============================================================ posters
 // Field-notes posters: an image model draws the stamp, js/poster.js draws
 // the sheet. Unlike check-in photos (one per user, overwritten), these are
@@ -439,9 +465,10 @@ export async function savePoster({ checkIn, provider, style, posterBlob }) {
 
   const put = async (suffix, blob) => {
     if (!blob) return null;
-    const path = `${base}${suffix}.png`;
+    const jpeg = blob.type === "image/jpeg";
+    const path = `${base}${suffix}.${jpeg ? "jpg" : "png"}`;
     const { error } = await db.storage.from(POSTER_BUCKET)
-      .upload(path, blob, { upsert: true, contentType: "image/png" });
+      .upload(path, blob, { upsert: true, contentType: jpeg ? "image/jpeg" : "image/png" });
     if (error) throw error;
     return path;
   };

@@ -628,3 +628,5 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
   background: var(--ink); color: var(--paper); font-weight: 700; cursor: pointer; }
 .live-card { border-left: 4px solid var(--peach); }
 .live-card .icon { width: 20px; height: 20px; color: var(--accent-ink); }
+.danger-text { color: var(--danger); }
+.danger-text .icon { width: 18px; height: 18px; }

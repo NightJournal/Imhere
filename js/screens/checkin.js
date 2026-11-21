@@ -13,8 +13,13 @@ import { placeField } from "../geo.js";
 import { app, refreshProfile } from "../app.js";
 import { confirmPasscode } from "../passcode.js";
 
-/** Shrink a photo in the browser before upload: smaller, faster, cheaper. */
-async function compress(file, maxSide = 1600, quality = 0.82) {
+/**
+ * Shrink a photo in the browser before upload: smaller, faster, cheaper.
+ * A 4K phone photo (~4 MB) becomes ~150–300 KB at 1280 px, which is
+ * sharp on any phone screen and on the postcard. Re-drawing also removes
+ * the photo's hidden metadata (including the GPS position it was taken at).
+ */
+async function compress(file, maxSide = 1280, quality = 0.8) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");

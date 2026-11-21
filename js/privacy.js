@@ -15,7 +15,7 @@ export function openPrivacy() {
     section("Who can see what",
       "Only people in your circle, and only people who joined with an invite link you made. Nobody else, and nobody who isn't signed in.",
       "Check-ins: your circle sees the ones from your current trip. Check-ins made outside a trip, and past trips, stay private unless you switch History on for that person.",
-      "Your one photo: your circle can open it only when they can see the check-in it belongs to. A new photo replaces the old one.",
+      "Your one photo: your circle can open it only when they can see the check-in it belongs to. A new photo replaces the old one. Photos are shrunk on your phone before upload, which also removes hidden details like where the photo was taken.",
       "Your name, profile picture and travel plans you choose to share are visible to your circle.",
       "Remove someone and they lose access straight away. An old invite link won't let them back in."),
     section("Automatic location (only if you turn it on)",
@@ -30,5 +30,5 @@ export function openPrivacy() {
       "Your check-in passcode is kept only on this device, scrambled. Imhere never sends it anywhere.",
       "Check-ins made without signal wait on this phone until they can be sent. Signing out deletes anything still waiting, so it can never be sent from someone else's account."),
     section("Getting your data removed",
-      "Delete a check-in or plan from the app at any time. To delete your whole account and everything linked to it, ask the person who runs this Imhere."));
+      "Delete a check-in or plan from the app at any time. To delete everything, open You \u2192 Delete my account: your login, check-ins, plans, posters, photos, circle and location are all removed for good."));
 }

@@ -28,6 +28,19 @@ export function posterSource(checkIns) {
 
 // ============================================================ the sheet
 
+// Posters are viewed on phones: 1920 px on the long side is already more
+// than a phone screen shows. A 4K upload is scaled down to that, and saved
+// as JPEG (a few hundred KB instead of 10+ MB). Re-drawing also drops the
+// file's hidden metadata (camera, GPS position).
+const POSTER_MAX_SIDE = 1920;
+const POSTER_QUALITY = 0.88;
+
+function posterToBlob(canvas) {
+  return new Promise((resolve, reject) => canvas.toBlob(
+    (blob) => (blob ? resolve(blob) : reject(new Error("Couldn't prepare the poster."))),
+    "image/jpeg", POSTER_QUALITY));
+}
+
 
 export async function openPosterSheet(checkIns, onSaved = () => {}) {
   let checkIn = checkIns[0];
@@ -54,11 +67,16 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
   /** What you uploaded IS the poster — the AI made the whole thing. */
   function redraw() {
     if (!posterImage) return;
+    const scale = Math.min(1, POSTER_MAX_SIDE / Math.max(posterImage.naturalWidth, posterImage.naturalHeight));
     posterCanvas = document.createElement("canvas");
-    posterCanvas.width = posterImage.naturalWidth;
-    posterCanvas.height = posterImage.naturalHeight;
-    posterCanvas.getContext("2d").drawImage(posterImage, 0, 0);
-    preview.src = posterCanvas.toDataURL("image/png");
+    posterCanvas.width = Math.round(posterImage.naturalWidth * scale);
+    posterCanvas.height = Math.round(posterImage.naturalHeight * scale);
+    const ctx = posterCanvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";                       // JPEG has no transparency
+    ctx.fillRect(0, 0, posterCanvas.width, posterCanvas.height);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(posterImage, 0, 0, posterCanvas.width, posterCanvas.height);
+    preview.src = posterCanvas.toDataURL("image/jpeg", POSTER_QUALITY);
     preview.classList.remove("hidden");
     save.classList.remove("hidden");
     download.classList.remove("hidden");
@@ -204,7 +222,7 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `field-notes-${cityOnly(checkIn.place_name).toLowerCase().replace(/\s+/g, "-")}.png`;
+    link.download = `field-notes-${cityOnly(checkIn.place_name).toLowerCase().replace(/\s+/g, "-")}.jpg`;
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   };

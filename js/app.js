@@ -258,8 +258,53 @@ function accountSheet() {
       save),
     locationCard(),
     passcodeCard(),
-    el("div", { class: "card stack" }, privacy, replay, out)
+    el("div", { class: "card stack" }, privacy, replay, out),
+    deleteAccountCard()
   );
+}
+
+function deleteAccountCard() {
+  const start = el("button", { class: "ghost danger-text", type: "button" }, icon("trash"), "Delete my account");
+  start.onclick = () => {
+    const typed = el("input", { type: "text", autocomplete: "off", autocapitalize: "characters",
+      placeholder: "DELETE", "aria-label": "Type DELETE to confirm" });
+    const go = el("button", { class: "danger", type: "button", disabled: "disabled" }, "Delete everything");
+    const cancel = el("button", { class: "ghost", type: "button" }, "Keep my account");
+    const message = el("p", { class: "dim", role: "alert" });
+    typed.oninput = () => { go.disabled = typed.value.trim().toUpperCase() !== "DELETE"; };
+    cancel.onclick = closeSheet;
+    go.onclick = async () => {
+      if (!navigator.onLine) { message.textContent = "You need signal to delete your account."; return; }
+      go.disabled = true; cancel.disabled = true; go.textContent = "Deleting…";
+      try {
+        await live.signOutCleanup().catch(() => {});
+        await data.deleteMyAccount();
+        passcode.clearAll();
+        await outbox.wipe();
+        for (const key of Object.keys(localStorage)) if (key.startsWith("imhere.")) localStorage.removeItem(key);
+        closeSheet();
+        toast("Your account and everything in it has been deleted.", "ok");
+        setTimeout(() => location.reload(), 1800);
+      } catch (error) {
+        message.textContent = "Couldn't finish: " + (error.message || error) + ". Nothing is lost by trying again.";
+        go.disabled = false; cancel.disabled = false; go.textContent = "Delete everything";
+      }
+    };
+    openSheet("Delete your account?",
+      el("div", { class: "stack" },
+        el("p", {}, "This permanently deletes, for good:"),
+        el("ul", { class: "dim", style: "padding-left:1.2em;display:grid;gap:4px" },
+          el("li", {}, "your check-ins, trips, plans and posters"),
+          el("li", {}, "your photo and profile picture"),
+          el("li", {}, "your circle: people stop seeing you, and you stop seeing them"),
+          el("li", {}, "your live location and last-seen point"),
+          el("li", {}, "your login")),
+        el("p", { class: "dim" }, "It can't be undone. Download any postcards or posters you want to keep first."),
+        el("label", { class: "field" }, el("span", { class: "label" }, "Type DELETE to confirm"), typed),
+        message, go, cancel));
+    setTimeout(() => typed.focus(), 50);
+  };
+  return el("div", { class: "card stack" }, start);
 }
 
 function switchRow(label, on, onToggle) {
