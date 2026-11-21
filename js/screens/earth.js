@@ -8,7 +8,7 @@
 import { el, fill, staleness, cityOnly, flagEmoji, TRANSPORT, icon, sparkle, mapCountry,
          haversineKm, toast, openSheet, closeSheet, confirmSheet } from "../ui.js";
 import * as data from "../db.js";
-import { placeField } from "../geo.js";
+import { placeField, reverseGeocode } from "../geo.js";
 import { app, setSubtitle, refreshProfile, go } from "../app.js";
 import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle } from "../postcard.js";
 import { openPosterSheet, postersCard } from "./posters.js";
@@ -398,7 +398,20 @@ function pinDetails(pane, item) {
   pane.querySelector(".pin-card")?.remove();
   const close = el("button", { class: "icon-button", "aria-label": "Close" }, icon("close"));
   let body;
-  if (item.kind === "origin") {
+  if (item.kind === "friend") {
+    const f = item.friend;
+    const place = el("div", { class: "place" }, f.place ? `${flagEmoji(f.country)} ${cityOnly(f.place)}`.trim() : "Locating place…");
+    if (!f.place) reverseGeocode(f.lat, f.lon).then((found) => {
+      place.textContent = found ? `${flagEmoji(found.countryCode)} ${cityOnly(found.label)}`.trim() : "Shared location";
+    }).catch(() => { place.textContent = "Shared location"; });
+    const open = el("button", { class: "secondary", type: "button", style: "margin-top:8px;min-height:40px" }, "Open their page");
+    open.onclick = () => go("circle", { openPerson: { id: f.id, display_name: f.name, avatar_path: f.avatar_path } });
+    body = el("div", { style: "min-width:0" },
+      el("div", { style: "font-weight:700" }, f.name),
+      place,
+      el("div", { class: "dim" }, `${staleness(f.at)} · ${f.source === "live" ? "sharing live" : f.source === "lastSeen" ? "last seen (automatic)" : "check-in"}`),
+      open);
+  } else if (item.kind === "origin") {
     body = el("div", {}, el("div", { class: "place" }, cityOnly(item.origin.name)),
       el("div", { class: "dim" }, "Where this trip started"));
   } else {
@@ -420,10 +433,10 @@ function clusterList(pane, members) {
   pane.querySelector(".pin-card")?.remove();
   const close = el("button", { class: "icon-button", "aria-label": "Close" }, icon("close"));
   const card = el("div", { class: "pin-card", role: "dialog", "aria-label": "Check-ins here" },
-    el("div", { class: "rowline" }, el("strong", {}, `${members.length} check-ins here`), close),
-    members.filter((m) => m.checkIn).map((m) => el("div", { class: "list-row" },
-      el("div", { style: "font-weight:700" }, cityOnly(m.checkIn.place_name)),
-      el("div", { class: "dim" }, staleness(m.checkIn.created_at)))));
+    el("div", { class: "rowline" }, el("strong", {}, `${members.length} here`), close),
+    members.filter((m) => m.checkIn || m.friend).map((m) => el("div", { class: "list-row" },
+      el("div", { style: "font-weight:700" }, m.friend ? m.friend.name : cityOnly(m.checkIn.place_name)),
+      el("div", { class: "dim" }, staleness(m.friend ? m.friend.at : m.checkIn.created_at)))));
   close.onclick = () => card.remove();
   pane.append(card);
 }
@@ -525,12 +538,41 @@ function memoryCards(checkIns, wrap) {
 
 // ---- what the globe shows: this trip, or every place once ----
 const VIEW_KEY = "imhere.globeView";
+// Friends on the globe: fetched when that view is picked, kept for a minute.
+let friendsCache = { at: 0, list: [] };
+async function loadFriendsForGlobe() {
+  if (Date.now() - friendsCache.at < 60_000) return friendsCache.list;
+  const list = await data.friendsOnEarth().catch(() => []);
+  await Promise.all(list.map(async (f) => { f.avatarURL = await data.avatarURL(f.avatar_path).catch(() => null); }));
+  friendsCache = { at: Date.now(), list };
+  return list;
+}
+
+async function showOnGlobe(checkIns, origins, profile, view) {
+  const friends = view === "friends" && navigator.onLine ? await loadFriendsForGlobe() : [];
+  globe?.show({ checkIns, origins, tripID: profile?.current_trip_id, view, friends,
+                person: { name: profile?.display_name, avatarURL: app.avatarURL } });
+  if (view === "friends" && !friends.length && globePane) {
+    pinNote(globePane, navigator.onLine
+      ? "No friends to show yet. People whose circle you're in, and people in your groups, appear here."
+      : "Friends need signal to load.");
+  }
+}
+
+function pinNote(pane, text) {
+  pane.querySelector(".pin-card")?.remove();
+  const close = el("button", { class: "icon-button", "aria-label": "Close" }, icon("close"));
+  const card = el("div", { class: "pin-card", role: "status" }, el("div", { class: "rowline" }, el("p", { class: "dim" }, text), close));
+  close.onclick = () => card.remove();
+  pane.append(card);
+}
+
 function globeViewSwitch(checkIns, origins, profile) {
   const hasTrip = Boolean(profile?.current_trip_id || checkIns.some((c) => c.trip_id));
   const tripLabel = profile?.current_trip_id ? "This trip" : "Latest trip";
   let value = localStorage.getItem(VIEW_KEY) || (profile?.current_trip_id ? "trip" : "places");
   if (value === "trip" && !hasTrip) value = "places";
-  const options = [["trip", tripLabel], ["places", "All places"]];
+  const options = [["trip", tripLabel], ["places", "All places"], ["friends", "Friends"]];
   const buttons = options.map(([id, label]) => {
     const button = el("button", { type: "button", class: "seg" + (id === value ? " on" : ""),
       "aria-pressed": String(id === value) }, label);
@@ -541,8 +583,7 @@ function globeViewSwitch(checkIns, origins, profile) {
       try { localStorage.setItem(VIEW_KEY, id); } catch {}
       buttons.forEach((b, i) => { const on = options[i][0] === id; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
       globePane?.querySelector(".pin-card")?.remove();
-      globe?.show({ checkIns, origins, tripID: profile?.current_trip_id, view: id,
-                    person: { name: profile?.display_name, avatarURL: app.avatarURL } });
+      showOnGlobe(checkIns, origins, profile, id);
     };
     return button;
   });
@@ -623,8 +664,7 @@ async function render(container) {
     await ensureGlobe();
     if (!globePane.isConnected) globeWrap.firstElementChild.replaceWith(globePane);
     globePane.querySelector(".pin-card")?.remove();
-    globe.show({ checkIns, origins, tripID: profile?.current_trip_id, view: viewSwitch.value(),
-                 person: { name: profile?.display_name, avatarURL: app.avatarURL } });
+    await showOnGlobe(checkIns, origins, profile, viewSwitch.value());
     if (!memoryListening) { globe.onMove(() => currentMemoryUpdate?.()); memoryListening = true; }
     currentMemoryUpdate = memories.update;
     requestAnimationFrame(memories.update);

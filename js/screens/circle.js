@@ -306,7 +306,7 @@ function inviteSheet(reload) {
 
 // ============================================================ main screen
 
-async function render(container) {
+async function render(container, options = {}) {
   setSubtitle("");
   const [members, travellers] = await Promise.all([data.myCircle(), data.myTravellers()]);
   const reload = () => render(container);
@@ -370,6 +370,7 @@ async function render(container) {
           "Nobody can see you yet. Create an invite link and send it to someone."));
 
   closeFriendGlobe();
+  if (options.openPerson) { await friendView(container, options.openPerson, reload); return; }
   const groups = await groupsCard({ reload, openMember: (person) => friendView(container, person, reload) })
     .catch(() => null);
   fill(container, el("div", { style: "padding-bottom:var(--s5)" }, invite), groups, followingCard, myCircleCard,

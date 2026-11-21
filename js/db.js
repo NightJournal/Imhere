@@ -483,6 +483,42 @@ export async function shareCheckinWithGroup(checkinId, groupId) {
   return unwrap(await db.rpc("group_share_checkin", { checkin: checkinId, grp: groupId }));
 }
 
+// ============================================================ friends on my globe
+// Everyone I can see — people whose circle I'm in, plus members of my running
+// groups — at their latest visible position. RLS decides what comes back, so
+// this never shows more than their own pages would.
+
+export async function friendsOnEarth() {
+  const me = (await currentUser())?.id;
+  const [travellers, groups] = await Promise.all([myTravellers().catch(() => []), myGroups().catch(() => [])]);
+  const people = new Map();
+  for (const t of travellers) people.set(t.id, { id: t.id, name: t.display_name || "Friend", avatar_path: t.avatar_path });
+  for (const g of groups.filter((g) => g.active)) {
+    for (const m of g.members) {
+      if (m.member_id === me || people.has(m.member_id)) continue;
+      people.set(m.member_id, { id: m.member_id, name: m.display_name, avatar_path: m.avatar_path });
+    }
+  }
+  const ids = [...people.keys()];
+  if (!ids.length) return [];
+  const [checkIns, points] = await Promise.all([
+    db.from("check_ins").select("user_id, latitude, longitude, place_name, country_code, created_at")
+      .in("user_id", ids).order("created_at", { ascending: false }).limit(500),
+    db.from("live_points").select("user_id, latitude, longitude, recorded_at, source")
+      .in("user_id", ids).order("recorded_at", { ascending: false }).limit(500),
+  ]);
+  const latest = new Map();
+  for (const c of checkIns.data ?? []) if (!latest.has(c.user_id))
+    latest.set(c.user_id, { lat: c.latitude, lon: c.longitude, at: c.created_at, place: c.place_name, country: c.country_code, source: "checkin" });
+  for (const p of points.data ?? []) {
+    const have = latest.get(p.user_id);
+    if (!have || new Date(p.recorded_at) > new Date(have.at)) {
+      latest.set(p.user_id, { lat: p.latitude, lon: p.longitude, at: p.recorded_at, place: null, source: p.source === "live" ? "live" : "lastSeen" });
+    }
+  }
+  return ids.filter((id) => latest.has(id)).map((id) => ({ ...people.get(id), ...latest.get(id) }));
+}
+
 // ============================================================ delete account
 // 1) remove the person's files (photo, profile picture, every poster) —
 //    storage files can only be removed through the storage API;

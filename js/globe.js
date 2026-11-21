@@ -255,6 +255,21 @@ function makePinElement(item, handlers) {
     } else face.textContent = initials(item.personName);
     node.append(face);
     node.setAttribute("aria-label", `Latest: ${cityOnly(item.checkIn.place_name)}, ${staleness(item.checkIn.created_at)}`);
+  } else if (item.kind === "friend") {
+    // A friend's latest position: their face in lavender, name underneath.
+    const face = document.createElement("span");
+    face.className = "globe-pin__face";
+    if (item.avatarURL) {
+      const image = document.createElement("img");
+      image.src = item.avatarURL; image.alt = "";
+      face.append(image);
+    } else face.textContent = initials(item.friend.name);
+    const name = document.createElement("span");
+    name.className = "globe-pin__name";
+    name.textContent = item.friend.name.split(" ")[0];
+    node.append(face, name);
+    if (item.quiet) node.classList.add("globe-pin--quiet");
+    node.setAttribute("aria-label", `${item.friend.name}, ${staleness(item.friend.at)}`);
   } else if (item.kind === "origin") {
     node.innerHTML = PIN_SVG(PAPER, INK, INK);
     node.setAttribute("aria-label", `Trip start: ${cityOnly(item.origin.name)}`);
@@ -497,7 +512,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
    *       "all"    — everything (pins for every check-in + current route).
    * Visited countries are coloured in every view.
    */
-  function show({ checkIns = [], origins = [], tripID = null, person = {}, view = "all", fly: flyHome = true } = {}) {
+  function show({ checkIns = [], origins = [], tripID = null, person = {}, view = "all", friends = [], fly: flyHome = true } = {}) {
     // Visited = every country with a check-in (the origin doesn't count).
     const visited = new Set(checkIns.map((c) => mapCountry(c.country_code)).filter(Boolean));
     const key = [...visited].sort().join(",");
@@ -515,6 +530,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
       ? (tripID ?? checkIns.find((c) => c.trip_id)?.trip_id ?? null)
       : (tripID ?? checkIns[0]?.trip_id ?? null);
     let shown = checkIns;                                    // newest first
+    if (view === "friends") shown = checkIns.slice(0, 1);    // just you, among your friends
     if (view === "trip") shown = currentTrip ? checkIns.filter((c) => c.trip_id === currentTrip) : checkIns.slice(0, 1);
     if (view === "places") {
       const seenPlace = new Set();
@@ -526,7 +542,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
       });
     }
     const chronological = [...shown].reverse();             // oldest first
-    const origin = view === "places" ? null : (origins.find((o) => o.trip_id === currentTrip) || null);
+    const origin = view === "places" || view === "friends" ? null : (origins.find((o) => o.trip_id === currentTrip) || null);
     const latestID = checkIns[0]?.id;
     const items = [];
     if (origin) items.push({ id: "origin-" + origin.trip_id, kind: "origin",
@@ -539,6 +555,11 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
         fresh: seen.size > 0 && !seen.has(checkIn.id),
       });
     }
+    if (view === "friends") {
+      const STALE_MS = 36 * 3600 * 1000;
+      for (const friend of friends) items.push({ id: "friend-" + friend.id, kind: "friend", lat: friend.lat, lon: friend.lon,
+        friend, avatarURL: friend.avatarURL || null, quiet: Date.now() - new Date(friend.at).getTime() > STALE_MS });
+    }
     // Latest last, so it sits on top and wins a cluster's face.
     items.sort((a, b) => (a.kind === "latest") - (b.kind === "latest"));
     state.items = items;
@@ -546,7 +567,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
 
     // Route: origin → stops of the current trip, in time order (not in "places").
     const arcs = [];
-    if (view !== "places") {
+    if (view !== "places" && view !== "friends") {
       const route = [];
       if (origin) route.push([origin.latitude, origin.longitude]);
       for (const c of [...checkIns].reverse()) {
@@ -559,7 +580,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     lastSignature = "";
     redrawPins();
     if (flyHome) {
-      if (view === "trip" && items.length > 1) {
+      if ((view === "trip" || view === "friends") && items.length > 1) {
         const points = items.map((i) => ({ lat: i.lat, lon: i.lon }));
         const lat = points.reduce((s, p) => s + p.lat, 0) / points.length;
         const lon = points.reduce((s, p) => s + p.lon, 0) / points.length;
