@@ -280,7 +280,7 @@ function inviteSheet(reload) {
     if (/group=/.test(code.value)) {            // a travel-group link pasted here
       try {
         const outcome = await data.joinGroup(match[0]);
-        if (outcome === "ok") { toast("You've joined the travel group", "ok"); closeSheet(); reload(); }
+        if (outcome === "ok") { toast("You've joined the group", "ok"); closeSheet(); reload(); }
         else toast(data.groupProblem(outcome), "error");
       } catch (error) { toast(error.message, "error"); }
       join.disabled = false;

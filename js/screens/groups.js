@@ -1,5 +1,8 @@
 // ---------------------------------------------------------------
-// Travel groups — people travelling together, until an end date.
+// Groups. Two kinds:
+//  * Friend groups — no end date. Members see each other's CURRENT trip and
+//    live location (no history). Each member can pause sharing.
+//  * Travel groups — people travelling together, until an end date.
 //
 // While a group runs, its members see each other's check-ins and live
 // location from the group's time (nothing older, nothing after it ends).
@@ -13,10 +16,12 @@ import { app } from "../app.js";
 const day = (iso) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 const isoDate = (d) => d.toISOString().slice(0, 10);
 
-/** The "Travel groups" card on the Circle screen. */
+/** The "Groups" card on the Circle screen. */
 export async function groupsCard({ reload, openMember }) {
   const groups = await data.myGroups().catch(() => []);
-  const create = el("button", { class: "secondary", type: "button" }, icon("circle"), "New travel group");
+  const createFriends = el("button", { class: "secondary", type: "button" }, icon("circle"), "New friend group");
+  createFriends.onclick = () => createFriendGroupSheet(reload);
+  const create = el("button", { class: "secondary", type: "button" }, icon("plans"), "New travel group");
   create.onclick = () => createGroupSheet(reload);
 
   const active = groups.filter((g) => g.active);
@@ -26,21 +31,43 @@ export async function groupsCard({ reload, openMember }) {
       style: "width:100%;background:none;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left" },
       el("span", { style: "min-width:0" },
         el("span", { style: "display:block;font-weight:700" }, group.name),
-        el("span", { class: "dim" }, group.active
-          ? `Until ${day(group.ends_at)} · ${group.members.length} ${group.members.length === 1 ? "person" : "people"}`
-          : `Ended ${day(group.ends_at)}`)),
-      el("span", { class: "pill " + (group.active ? "live" : "quiet") }, group.active ? "On" : "Ended"));
+        el("span", { class: "dim" }, !group.active ? `Ended ${day(group.ends_at)}`
+          : `${group.kind === "friends" ? "Friend group" : `Travel group until ${day(group.ends_at)}`} · ${group.members.length} ${group.members.length === 1 ? "person" : "people"}`)),
+      el("span", { class: "pill " + (group.active ? "live" : "quiet") },
+        !group.active ? "Ended" : group.kind === "friends" ? "Friends" : "Travel"));
     button.onclick = () => groupSheet(group, { reload, openMember });
     return button;
   };
 
   return el("section", { class: "card" },
-    el("h3", {}, "Travel groups"),
+    el("h3", {}, "Groups"),
     el("p", { class: "dim" },
-      "Travelling with others? Until the end date you set, everyone in the group sees each other's check-ins and live location. When it ends, that stops."),
+      "Friend group: no end date. Everyone sees each other's current trip and live location. Travel group: until an end date, everyone sees each other's check-ins and live location from the trip."),
     active.length ? active.map(row) : null,
     ended.length ? ended.map(row) : null,
-    el("div", { style: "margin-top:var(--s3)" }, create));
+    el("div", { class: "button-row", style: "margin-top:var(--s3)" }, createFriends, create));
+}
+
+function createFriendGroupSheet(reload) {
+  const name = el("input", { type: "text", maxlength: "60", placeholder: "e.g. Uni friends" });
+  const message = el("p", { class: "dim", role: "alert" });
+  const go = el("button", { class: "primary", type: "button" }, "Create friend group");
+  go.onclick = async () => {
+    if (!name.value.trim()) { message.textContent = "Give the group a name."; name.focus(); return; }
+    go.disabled = true;
+    try {
+      await data.createFriendGroup(name.value.trim());
+      toast("Friend group created. Invite your friends from inside it.", "ok");
+      closeSheet(); reload();
+    } catch (error) { message.textContent = error.message || "Couldn't create the group."; go.disabled = false; }
+  };
+  openSheet("New friend group",
+    el("div", { class: "stack" },
+      el("label", { class: "field" }, el("span", { class: "label" }, "Name"), name),
+      el("p", { class: "dim" },
+        "No end date. Everyone in it sees each other's current trip and live location, nothing older and no check-ins outside a trip. Only you can invite people. Anyone can pause sharing or leave."),
+      message, go));
+  setTimeout(() => name.focus(), 50);
 }
 
 function createGroupSheet(reload) {
@@ -97,11 +124,29 @@ function groupSheet(group, { reload, openMember }) {
     return el("div", { class: "list-row rowline" },
       el("span", { style: "display:flex;align-items:center;gap:var(--s3);min-width:0" }, face,
         el("span", {}, el("span", { style: "display:block;font-weight:700" }, you ? `${m.display_name} (you)` : m.display_name),
-          el("span", { class: "dim" }, m.member_id === group.created_by ? "Started the group" : `Joined ${day(m.joined_at)}`))),
+          el("span", { class: "dim" }, [m.member_id === group.created_by ? "Started the group" : `Joined ${day(m.joined_at)}`,
+            group.kind === "friends" && m.sharing === false ? "sharing paused" : null].filter(Boolean).join(" · ")))),
       el("span", { style: "display:flex;gap:6px;align-items:center" }, view, remove));
   });
 
-  // My setting: may the group check in for me?
+  const friends = group.kind === "friends";
+
+  // Friend groups: pause sharing (both ways).
+  const sharingOn = mine?.sharing ?? true;
+  const shareKnob = el("button", { class: "switch" + (sharingOn ? " on" : ""), type: "button", role: "switch",
+    "aria-checked": String(sharingOn), "aria-label": "Share with this group" });
+  shareKnob.onclick = async () => {
+    const next = !shareKnob.classList.contains("on");
+    shareKnob.disabled = true;
+    try {
+      await data.setGroupSharing(group.id, next);
+      shareKnob.classList.toggle("on", next); shareKnob.setAttribute("aria-checked", String(next));
+      toast(next ? "Sharing with the group again" : "Paused: they can't see you, and you can't see them", "ok");
+    } catch (error) { toast(error.message, "error"); }
+    shareKnob.disabled = false;
+  };
+
+  // Travel groups: may the group check in for me?
   const allow = mine?.allow_group_checkins ?? true;
   const knob = el("button", { class: "switch" + (allow ? " on" : ""), type: "button", role: "switch",
     "aria-checked": String(allow), "aria-label": "Let the group check in for me" });
@@ -119,24 +164,30 @@ function groupSheet(group, { reload, openMember }) {
   const invites = isCreator && group.active ? inviteBlock(group) : null;
 
   const leave = !isCreator && group.active ? el("button", { class: "danger", type: "button" }, "Leave group") : null;
+  const endLabel = friends ? "Close group" : "End group now";
   if (leave) leave.onclick = async () => {
     if (!(await confirmSheet("Leave this group?", "You'll stop seeing the group, and they stop seeing you. Check-ins already added to your history stay yours.", "Leave"))) return;
     try { await data.leaveGroup(group.id); toast("You left the group", "ok"); reload(); }
     catch (error) { toast(error.message, "error"); }
   };
-  const end = isCreator && group.active ? el("button", { class: "danger", type: "button" }, "End group now") : null;
+  const end = isCreator && group.active ? el("button", { class: "danger", type: "button" }, endLabel) : null;
   if (end) end.onclick = async () => {
-    if (!(await confirmSheet("End the group now?", "Everyone stops seeing each other straight away, and unused invite links stop working. This can't be undone.", "End group"))) return;
+    if (!(await confirmSheet(friends ? "Close this friend group?" : "End the group now?", "Everyone stops seeing each other straight away, and unused invite links stop working. This can't be undone.", endLabel))) return;
     try { await data.endGroup(group.id); toast("Group ended", "ok"); reload(); }
     catch (error) { toast(error.message, "error"); }
   };
 
   openSheet(group.name,
     el("p", { class: "dim", style: "margin-bottom:var(--s3)" },
-      group.active ? `Runs until ${new Date(group.ends_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`
-                   : "This group has ended. Nobody in it can see the others any more."),
+      !group.active ? "This group has ended. Nobody in it can see the others any more."
+        : friends ? "Friend group, no end date. Members see each other's current trip and live location."
+        : `Travel group, runs until ${new Date(group.ends_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`),
     el("section", { class: "card" }, el("h3", {}, `People (${group.members.length})`), members),
-    group.active ? el("section", { class: "card" },
+    group.active && friends ? el("section", { class: "card" },
+      el("div", { class: "toggle-row" }, el("span", {}, "Share with this group"), shareKnob),
+      el("p", { class: "dim" },
+        "Switch off for a quiet spell: they won't see your current trip or live location, and you won't see theirs, until you switch it back on.")) : null,
+    group.active && !friends ? el("section", { class: "card" },
       el("div", { class: "toggle-row" }, el("span", {}, "Let the group check in for me"), knob),
       el("p", { class: "dim" },
         "When someone checks in “for the group”, it's added to your history too, marked with their name, so your own circle sees it. You can delete any of these.")) : null,
@@ -182,7 +233,7 @@ function inviteBlock(group) {
         if (copied) toast("Link copied", "ok"); else { box.select(); toast("Couldn't copy automatically. The link is selected."); }
       };
       fill(output, el("p", { class: "dim" },
-        `Works for ${invite.max_uses === 1 ? "one person" : `up to ${invite.max_uses} people`} until the group ends. Whoever joins sees where everyone in the group is, so only send it to people you're travelling with.`),
+        `Works for ${invite.max_uses === 1 ? "one person" : `up to ${invite.max_uses} people`} for 7 days${group.kind === "friends" ? "" : " (or until the group ends)"}. Whoever joins sees where everyone in the group is, so only send it to people you trust.`),
         box, copy);
       drawList();
     } catch (error) { toast(error.message, "error"); }
@@ -190,7 +241,7 @@ function inviteBlock(group) {
   };
   drawList();
   return el("section", { class: "card stack" },
-    el("h3", {}, "Invite people you're travelling with"),
+    el("h3", {}, group.kind === "friends" ? "Invite friends" : "Invite people you're travelling with"),
     el("div", { class: "field" }, el("span", { class: "label" }, "How many people can join with it"), chips),
     create, output, list);
 }
@@ -198,7 +249,7 @@ function inviteBlock(group) {
 /** Check-in sheet helper: the groups I could check in for right now. */
 export async function activeGroups() {
   const groups = await data.myGroups().catch(() => []);
-  return groups.filter((g) => g.active);
+  return groups.filter((g) => g.active && g.kind !== "friends");   // group check-ins: travel groups only
 }
 
 /** After sign-in: join the group from a #group= link. */
@@ -208,7 +259,7 @@ export async function redeemPendingGroup() {
   sessionStorage.removeItem("pendingGroup");
   try {
     const outcome = await data.joinGroup(token);
-    if (outcome === "ok") toast("You've joined the travel group. See it in Circle.", "ok");
+    if (outcome === "ok") toast("You've joined the group. See it in Circle.", "ok");
     else toast(data.groupProblem(outcome), "error");
   } catch (error) { toast(error.message, "error"); }
 }

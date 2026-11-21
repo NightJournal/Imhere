@@ -406,16 +406,28 @@ export async function friendLive(ownerID) {
 
 export async function myGroups() {
   const rows = unwrap(await db.from("travel_groups")
-    .select("*, group_members(member_id, joined_at, allow_group_checkins, profiles(id, display_name, avatar_path))")
+    .select("*, group_members(member_id, joined_at, allow_group_checkins, sharing, profiles(id, display_name, avatar_path))")
     .order("ends_at", { ascending: false })) ?? [];
   const now = Date.now();
-  return rows.map((g) => ({ ...g, active: new Date(g.ends_at).getTime() > now,
+  return rows.map((g) => ({ ...g, active: !g.ends_at || new Date(g.ends_at).getTime() > now,
     members: (g.group_members || []).map((m) => ({ ...m, display_name: m.profiles?.display_name || "Member",
       avatar_path: m.profiles?.avatar_path || null })) }));
 }
 
 export async function createGroup(name, endsAt) {
   return unwrap(await db.rpc("create_group", { group_name: name, ends: endsAt }));
+}
+
+/** A friend group: no end date; members see each other's current trip and live location. */
+export async function createFriendGroup(name) {
+  return unwrap(await db.rpc("create_friend_group", { group_name: name }));
+}
+
+/** Friend groups: pause/resume sharing (paused = you don't see them, they don't see you). */
+export async function setGroupSharing(groupId, on) {
+  const user = await currentUser();
+  unwrap(await db.from("group_members").update({ sharing: on })
+    .eq("group_id", groupId).eq("member_id", user.id));
 }
 
 export async function createGroupInvite(groupId, people = 1) {
@@ -426,7 +438,8 @@ export async function createGroupInvite(groupId, people = 1) {
 export async function groupInvites(groupId) {
   const rows = unwrap(await db.from("group_invites").select("*").eq("group_id", groupId)
     .order("created_at", { ascending: false })) ?? [];
-  return rows.filter((i) => i.use_count < i.max_uses);
+  const now = Date.now();
+  return rows.filter((i) => i.use_count < i.max_uses && new Date(i.expires_at).getTime() > now);
 }
 
 export async function cancelGroupInvite(token) {
@@ -442,7 +455,7 @@ export function groupProblem(outcome) {
   return {
     used: "You've already used this group link. Ask for a new one.",
     full: "This group link has been used by as many people as it allows.",
-    ended: "That travel group has already ended.",
+    ended: "That group has already ended.",
   }[outcome] || "That group link isn't valid any more.";
 }
 
