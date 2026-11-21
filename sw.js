@@ -3,13 +3,13 @@
 // signal. Bump CACHE_VERSION whenever you change any file below,
 // otherwise browsers keep serving the old copy.
 // ---------------------------------------------------------------
-const CACHE_VERSION = "imhere-v39";
+const CACHE_VERSION = "imhere-v40";
 
 const SHELL = [
   "./assets/postcard-world-original.png", "./assets/watercolor-world.png", "./assets/watercolor-paper.png", "./assets/watercolor-stand-logo.png", "./assets/peach-blossoms.png",
   "./", "./index.html", "./app.css", "./manifest.webmanifest",
   "./vendor/supabase.js", "./vendor/globe.gl.min.js",
-  "./js/app.js", "./js/live.js", "./js/passcode.js", "./js/welcome-tour.js", "./js/config.js", "./js/db.js", "./js/geo.js", "./js/ui.js", "./js/outbox.js",
+  "./js/app.js", "./js/live.js", "./js/passcode.js", "./js/privacy.js", "./js/welcome-tour.js", "./js/config.js", "./js/db.js", "./js/geo.js", "./js/ui.js", "./js/outbox.js",
   "./js/world-art.js", "./js/globe.js", "./js/postcard.js",
   "./js/screens/auth.js", "./js/screens/earth.js", "./js/screens/checkin.js",
   "./js/screens/plans.js", "./js/screens/circle.js", "./js/screens/posters.js",

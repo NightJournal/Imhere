@@ -3,6 +3,13 @@
 // ---------------------------------------------------------------
 import { el, fill, toast } from "../ui.js";
 import * as data from "../db.js";
+import { openPrivacy } from "../privacy.js";
+
+function privacyLink() {
+  const link = el("button", { class: "ghost", type: "button" }, "Privacy: what Imhere stores and who sees it");
+  link.onclick = openPrivacy;
+  return link;
+}
 
 let mode = "signin"; // or "signup"
 
@@ -76,7 +83,8 @@ async function render(container, { onSignedIn }) {
           : null,
         el("label", { class: "field" }, el("span", { class: "label" }, "Email"), email),
         el("label", { class: "field" }, el("span", { class: "label" }, "Password"), password),
-        submit, error, swap))
+        submit, error, swap,
+        privacyLink()))
   );
   (mode === "signup" ? name : email).focus();
 }
@@ -89,8 +97,7 @@ export async function redeemPendingInvite() {
   try {
     const outcome = await data.redeemInvite(token);
     if (outcome === "ok") toast("You've joined their circle", "ok");
-    else if (outcome === "own") toast("That's your own invite link");
-    else toast("That invite link has expired", "error");
+    else toast(data.inviteProblem(outcome), "error");
   } catch (error) {
     toast(error.message, "error");
   }

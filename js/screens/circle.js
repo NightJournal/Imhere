@@ -131,13 +131,52 @@ async function friendView(container, traveller, back) {
 
 // ============================================================ invites
 
+function choiceChips(label, options, initial, format) {
+  let value = initial;
+  const row = el("div", { class: "chips", role: "group", "aria-label": label });
+  const buttons = options.map((option) => {
+    const chip = el("button", { class: "chip" + (option === value ? " on" : ""), type: "button",
+      "aria-pressed": String(option === value) }, format(option));
+    chip.onclick = () => {
+      value = option;
+      buttons.forEach((b, i) => { b.classList.toggle("on", options[i] === option); b.setAttribute("aria-pressed", String(options[i] === option)); });
+    };
+    return chip;
+  });
+  row.append(...buttons);
+  return { element: el("div", { class: "field" }, el("span", { class: "label" }, label), row), get: () => value };
+}
+
 function inviteSheet(reload) {
   const output = el("div", { class: "stack" });
+  const activeList = el("div", { class: "stack" });
+  const days = choiceChips("Link works for", [1, 3, 7, 14, 30], 7, (d) => (d === 1 ? "1 day" : `${d} days`));
+  const people = choiceChips("How many people can join with it", [1, 2, 3, 5, 10], 1, (n) => (n === 1 ? "1 person" : `${n} people`));
+
+  const drawActive = async () => {
+    const invites = await data.myInvites().catch(() => []);
+    if (!invites.length) { fill(activeList); return; }
+    fill(activeList, el("h3", { style: "margin-top:10px" }, "Links that still work"),
+      invites.map((invite) => {
+        const cancel = el("button", { class: "ghost", type: "button", style: "width:auto" }, "Cancel link");
+        cancel.onclick = async () => {
+          cancel.disabled = true;
+          try { await data.cancelInvite(invite.token); toast("Link cancelled. Nobody new can join with it.", "ok"); drawActive(); }
+          catch (error) { toast(error.message, "error"); cancel.disabled = false; }
+        };
+        return el("div", { class: "list-row rowline" },
+          el("div", {},
+            el("div", { style: "font-weight:700" }, `${invite.use_count} of ${invite.max_uses} joined`),
+            el("div", { class: "dim" }, `Until ${new Date(invite.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })} · …${invite.token.slice(-6)}`)),
+          cancel);
+      }));
+  };
+
   const create = el("button", { class: "primary" }, "Create an invite link");
   create.onclick = async () => {
     create.disabled = true;
     try {
-      const invite = await data.createInvite();
+      const invite = await data.createInvite({ days: days.get(), people: people.get() });
       const link = `${location.origin}${location.pathname}#join=${invite.token}`;
       const box = el("input", { type: "text", value: link, readonly: "readonly" });
       const copy = el("button", { class: "secondary" }, "Copy link");
@@ -148,10 +187,12 @@ function inviteSheet(reload) {
         if (copied) toast("Link copied", "ok");
         else { box.select(); toast("Couldn't copy automatically. The link is selected: press ⌘C or long-press to copy."); }
       };
+      const who = invite.max_uses === 1 ? "one person" : `up to ${invite.max_uses} people`;
       fill(output,
         el("p", { class: "dim" },
-          "Send this to the person you want in your circle. It works for 7 days, and they join the moment they open it and sign in."),
+          `Works for ${who} until ${new Date(invite.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })}. Anyone holding it can join, so send it only to them. Each person can use it once: if you remove someone, this link won't let them back in.`),
         box, copy);
+      drawActive();
       reload();
     } catch (error) { toast(error.message, "error"); }
     create.disabled = false;
@@ -166,8 +207,7 @@ function inviteSheet(reload) {
     try {
       const outcome = await data.redeemInvite(match[0]);
       if (outcome === "ok") { toast("You've joined their circle", "ok"); closeSheet(); reload(); }
-      else if (outcome === "own") toast("That's your own invite link", "error");
-      else toast("That invite has expired or isn't valid", "error");
+      else toast(data.inviteProblem(outcome), "error");
     } catch (error) { toast(error.message, "error"); }
     join.disabled = false;
   };
@@ -175,9 +215,11 @@ function inviteSheet(reload) {
   openSheet("Invites",
     el("div", { class: "stack" },
       el("h3", {}, "Invite someone to follow me"),
-      create, output,
+      days.element, people.element,
+      create, output, activeList,
       el("h3", { style: "margin-top:10px" }, "Follow someone else"),
       code, join));
+  drawActive();
 }
 
 // ============================================================ main screen

@@ -3,7 +3,8 @@
 // Check in is not a tab any more: it's the raised button (phone) or the
 // rail button (desktop), and it opens as a sheet/panel over My Earth.
 // ---------------------------------------------------------------
-import { $, el, fill, toast, openSheet, closeSheet, icon, avatarElement, sparkle } from "./ui.js";
+import { $, el, fill, toast, openSheet, closeSheet, confirmSheet, icon, avatarElement, sparkle } from "./ui.js";
+import { openPrivacy } from "./privacy.js";
 import * as data from "./db.js";
 import * as outbox from "./outbox.js";
 import authScreen, { redeemPendingInvite } from "./screens/auth.js";
@@ -222,13 +223,27 @@ function accountSheet() {
 
   const out = el("button", { class: "danger" }, "Sign out");
   out.onclick = async () => {
+    // Waiting check-ins can't be kept: on a shared phone they'd otherwise
+    // be sent from the next person's account. Say so before deleting them.
+    const waiting = await outbox.pendingFor(app.user?.id);
+    if (waiting.length) {
+      if (navigator.onLine) await outbox.flush().catch(() => {});
+      const still = await outbox.pendingFor(app.user?.id);
+      if (still.length && !(await confirmSheet(
+        `${still.length} check-in${still.length > 1 ? "s" : ""} not sent yet`,
+        `${still.length > 1 ? "They haven't" : "It hasn't"} reached your circle because there's no signal. If you sign out now, ${still.length > 1 ? "they'll" : "it'll"} be deleted from this phone and your circle will never see ${still.length > 1 ? "them" : "it"}. Wait until you have signal, open Imhere, and sign out after it's sent.`,
+        "Sign out and delete"))) return;
+    }
     out.disabled = true;
     localStorage.removeItem("imhere.earth");   // don't leave your map on a shared device
     await live.signOutCleanup();               // stop sharing, remove what the circle sees
     passcode.clearAll();                       // signing back in sets a new passcode
+    await outbox.wipe();                       // never send your check-ins from someone else's account
     await data.signOut(); closeSheet(); location.reload();
   };
 
+  const privacy = el("button", { class: "secondary", type: "button" }, "Privacy: what's stored and who sees it");
+  privacy.onclick = openPrivacy;
   const replay = el("button", { class: "secondary", type: "button" }, "Replay welcome guide");
   replay.onclick = () => { closeSheet(); showWelcome({ userId: app.user?.id, onCheckin: checkin }); };
 
@@ -243,7 +258,7 @@ function accountSheet() {
       save),
     locationCard(),
     passcodeCard(),
-    el("div", { class: "card stack" }, replay, out)
+    el("div", { class: "card stack" }, privacy, replay, out)
   );
 }
 

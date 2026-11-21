@@ -54,6 +54,19 @@ export async function pending() {
   return (items || []).sort((a, b) => a.fields.created_at.localeCompare(b.fields.created_at));
 }
 
+/** Waiting check-ins that belong to `userId` (for the sign-out warning). */
+export async function pendingFor(userId) {
+  return (await pending().catch(() => [])).filter((item) => item.owner === userId || !item.owner);
+}
+
+/** Sign-out: remove every waiting check-in from this device. */
+export function wipe() {
+  return new Promise((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = request.onerror = request.onblocked = () => resolve();
+  });
+}
+
 /** Subscribe to changes in the waiting list (for banners). Returns unsubscribe. */
 export function onChange(callback) {
   listeners.add(callback);
@@ -72,7 +85,9 @@ async function notify() {
  * offline with GPS) — the real name is looked up when it sends.
  */
 export async function enqueue(fields, photoBlob = null, { needsName = false } = {}) {
+  const owner = (await data.currentUser())?.id ?? null;
   const item = {
+    owner,
     id: crypto.randomUUID(),
     fields: { ...fields, created_at: new Date().toISOString() },
     photoBlob,
@@ -108,7 +123,10 @@ export function flush() {
     let sent = 0;
     try {
       if (!navigator.onLine) return { sent, left: (await pending()).length };
-      const items = await pending();
+      // Only ever send the signed-in person's own check-ins. (Items from
+      // another account on a shared device are left alone, never sent.)
+      const me = (await data.currentUser())?.id;
+      const items = (await pending()).filter((item) => item.owner === me || !item.owner);   // no owner = saved before this check existed
       if (!items.length) return { sent, left: 0 };
 
       // Only the newest waiting item that has a photo gets to upload it.

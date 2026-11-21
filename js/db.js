@@ -303,16 +303,35 @@ export async function removeMember(memberID) {
     .eq("owner_id", user.id).eq("member_id", memberID));
 }
 
-export async function createInvite() {
+/** New invite link: valid for `days` (1–30), for up to `people` (1–20) people. */
+export async function createInvite({ days = 7, people = 1 } = {}) {
   const user = await currentUser();
-  return unwrap(await db.from("circle_invites").insert({ owner_id: user.id })
+  const expires = new Date(Date.now() + Math.min(30, Math.max(1, days)) * 86400_000 - 60_000);
+  return unwrap(await db.from("circle_invites")
+    .insert({ owner_id: user.id, expires_at: expires.toISOString(), max_uses: Math.min(20, Math.max(1, people)) })
     .select().single());
 }
 
+/** Links that still work (not expired, not full). */
 export async function myInvites() {
   const user = await currentUser();
-  return unwrap(await db.from("circle_invites").select("*")
-    .eq("owner_id", user.id).order("created_at", { ascending: false })) ?? [];
+  const rows = unwrap(await db.from("circle_invites").select("*")
+    .eq("owner_id", user.id).gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })) ?? [];
+  return rows.filter((invite) => invite.use_count < invite.max_uses);
+}
+
+export async function cancelInvite(token) {
+  unwrap(await db.from("circle_invites").delete().eq("token", token));
+}
+
+/** Plain words for a refused invite. */
+export function inviteProblem(outcome) {
+  return {
+    own: "That's your own invite link",
+    used: "You've already used this link. Ask them for a new one.",
+    full: "This link has been used by as many people as it allows. Ask them for a new one.",
+  }[outcome] || "That invite link has expired or isn't valid";
 }
 
 /** Returns "ok" | "own" | "invalid". */
