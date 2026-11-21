@@ -8,6 +8,7 @@ import { STALE_HOURS } from "../config.js";
 import * as data from "../db.js";
 import { setSubtitle } from "../app.js";
 import { mountGlobe } from "../globe.js";
+import { reverseGeocode } from "../geo.js";
 
 let friendGlobe = null;
 
@@ -20,7 +21,10 @@ function closeFriendGlobe() {
 
 async function friendView(container, traveller, back) {
   fill(container, el("div", { class: "empty", "aria-busy": "true" }, el("p", { class: "dim" }, "Loading…")));
-  const { checkIns, plans, origins, profile } = await data.friendData(traveller.id);
+  const [{ checkIns, plans, origins, profile }, liveData] = await Promise.all([
+    data.friendData(traveller.id),
+    data.friendLive(traveller.id).catch(() => ({ lastSeen: null, trail: [], session: null })),
+  ]);
   const avatarURL = await data.avatarURL(profile?.avatar_path || traveller.avatar_path).catch(() => null);
   const latest = checkIns[0];
   setSubtitle("");
@@ -48,6 +52,33 @@ async function friendView(container, traveller, back) {
         el("div", { class: "photo-slot" }))
     : el("section", { class: "card", style: "border-top:0" }, el("p", { class: "dim" },
         "No check-ins visible yet. You'll see their current trip; older trips need their permission."));
+
+  // Automatic location (only if they switched it on). Never called a check-in.
+  const liveHead = liveData.trail.at(-1) || liveData.lastSeen;
+  const liveIsNewer = liveHead && (!latest || new Date(liveHead.recorded_at) > new Date(latest.created_at));
+  const livePlace = el("span", { class: "place" }, "Locating place…");
+  const liveCard = liveHead && liveIsNewer
+    ? el("section", { class: "card live-card" },
+        el("div", { class: "rowline" },
+          el("span", { style: "display:flex;align-items:center;gap:8px" }, icon("live"),
+            el("strong", {}, liveData.session && liveData.trail.length ? "Sharing live" : "Last seen (automatic)")),
+          el("span", { class: "pill " + (hoursSince(liveHead.recorded_at) > STALE_HOURS ? "quiet" : "live") },
+            staleness(liveHead.recorded_at))),
+        el("div", { style: "margin-top:6px" }, livePlace),
+        el("p", { class: "dim", style: "margin-top:6px" },
+          liveData.session && liveData.trail.length
+            ? `Their route is on the globe until ${new Date(liveData.session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. It only updates while Imhere is open on their phone.`
+            : "Sent automatically when they opened Imhere. Not a check-in: it says where the phone was, not how they are."))
+    : null;
+  if (liveCard) {
+    reverseGeocode(liveHead.latitude, liveHead.longitude)
+      .then((place) => { livePlace.textContent = place ? `${flagEmoji(place.countryCode)} ${place.label}`.trim()
+        : `${liveHead.latitude.toFixed(4)}, ${liveHead.longitude.toFixed(4)}`; })
+      .catch(() => { livePlace.textContent = `${liveHead.latitude.toFixed(4)}, ${liveHead.longitude.toFixed(4)}`; });
+    const look = el("button", { class: "secondary", type: "button", style: "margin-top:10px" }, "Show on globe");
+    look.onclick = () => friendGlobe?.flyTo(liveHead.latitude, liveHead.longitude, 0.25);
+    liveCard.append(look);
+  }
 
   const planCards = plans.length
     ? el("div", { class: "card" },
@@ -77,7 +108,7 @@ async function friendView(container, traveller, back) {
         el("div", { style: "display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0" },
           avatarElement(traveller.display_name, avatarURL),
           el("h2", { style: "font-size:24px" }, traveller.display_name || "Traveller")),
-        latestCard, planCards, history)));
+        liveCard, latestCard, planCards, history)));
   closeFriendGlobe();
   document.body.classList.add("is-friend");
   try {
@@ -85,6 +116,8 @@ async function friendView(container, traveller, back) {
       onPinTap: (item) => friendGlobe.flyTo(item.lat, item.lon, Math.max(0.3, friendGlobe.altitude() * 0.8)),
     });
     friendGlobe.show({ checkIns, origins, person: { name: traveller.display_name, avatarURL } });
+    friendGlobe.showLive(liveData);
+    if (liveCard) friendGlobe.flyTo(liveHead.latitude, liveHead.longitude, 0.6);
   } catch (error) {
     mapBox.replaceChildren(el("p", { class: "dim", style: "padding:var(--s4)" }, error.message));
   }

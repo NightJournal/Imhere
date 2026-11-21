@@ -340,6 +340,46 @@ export async function friendData(ownerID) {
   };
 }
 
+// ============================================================ live location
+// A = one "last seen" point (source 'open'); B = live sessions with a trail.
+// Inserts are idempotent (ids are made on the phone), so retries are safe.
+
+export async function startLiveSession({ id, started_at, ends_at }) {
+  unwrap(await db.from("live_sessions")
+    .upsert({ id, started_at, ends_at }, { onConflict: "id", ignoreDuplicates: true }));
+}
+
+/** Deleting the session deletes its whole trail (on delete cascade). */
+export async function stopLiveSession(id) {
+  unwrap(await db.from("live_sessions").delete().eq("id", id));
+}
+
+export async function addLivePoints(points) {
+  unwrap(await db.from("live_points")
+    .upsert(points, { onConflict: "id", ignoreDuplicates: true }));
+}
+
+export async function deleteLastSeen() {
+  const user = await currentUser();
+  if (!user) return;
+  unwrap(await db.from("live_points").delete().eq("user_id", user.id).eq("source", "open"));
+}
+
+/** What a circle member may see of someone: last-seen point + running trail (RLS decides). */
+export async function friendLive(ownerID) {
+  const [points, sessions] = await Promise.all([
+    db.from("live_points").select("latitude, longitude, accuracy_m, recorded_at, source, session_id")
+      .eq("user_id", ownerID).order("recorded_at", { ascending: true }).limit(2000),
+    db.from("live_sessions").select("id, started_at, ends_at").eq("user_id", ownerID),
+  ]);
+  const all = points.data ?? [];
+  return {
+    lastSeen: all.filter((p) => p.source === "open").at(-1) ?? null,
+    trail: all.filter((p) => p.source === "live"),
+    session: (sessions.data ?? [])[0] ?? null,
+  };
+}
+
 // ============================================================ posters
 // Field-notes posters: an image model draws the stamp, js/poster.js draws
 // the sheet. Unlike check-in photos (one per user, overwritten), these are

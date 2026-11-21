@@ -13,6 +13,8 @@ import plansScreen from "./screens/plans.js";
 import circleScreen from "./screens/circle.js";
 
 import { needsWelcome, showWelcome, dismissWelcome } from "./welcome-tour.js";
+import * as live from "./live.js";
+import * as passcode from "./passcode.js";
 
 const SCREENS = {
   earth:   { title: "My Earth",  module: earthScreen },
@@ -137,6 +139,9 @@ async function showSignedIn() {
   outbox.startAutoFlush((sent) =>
     toast(sent === 1 ? "Your waiting check-in was sent" : `${sent} waiting check-ins sent`, "ok"));
 
+  // Optional automatic location (off unless the user switched it on).
+  live.start(app.user.id);
+
   // Offline, My Earth can't load anything new — the useful thing is Check in.
   await go("earth");
   if (!navigator.onLine) checkin();
@@ -217,7 +222,10 @@ function accountSheet() {
 
   const out = el("button", { class: "danger" }, "Sign out");
   out.onclick = async () => {
+    out.disabled = true;
     localStorage.removeItem("imhere.earth");   // don't leave your map on a shared device
+    await live.signOutCleanup();               // stop sharing, remove what the circle sees
+    passcode.clearAll();                       // signing back in sets a new passcode
     await data.signOut(); closeSheet(); location.reload();
   };
 
@@ -233,8 +241,93 @@ function accountSheet() {
     el("div", { class: "card stack" },
       el("label", { class: "field" }, el("span", { class: "label" }, "Display name"), nameInput),
       save),
+    locationCard(),
+    passcodeCard(),
     el("div", { class: "card stack" }, replay, out)
   );
+}
+
+function switchRow(label, on, onToggle) {
+  const knob = el("button", { class: "switch" + (on ? " on" : ""), type: "button",
+                              role: "switch", "aria-checked": String(on), "aria-label": label });
+  knob.onclick = async () => {
+    const next = !knob.classList.contains("on");
+    knob.disabled = true;
+    try { await onToggle(next); knob.classList.toggle("on", next); knob.setAttribute("aria-checked", String(next)); }
+    catch (error) { toast(error.message || String(error), "error"); }
+    knob.disabled = false;
+  };
+  return el("div", { class: "toggle-row" }, el("span", {}, label), knob);
+}
+
+/** A (share when I open the app) and B (live sharing), both optional. */
+function locationCard() {
+  const box = el("div", { class: "card stack" });
+  const draw = () => {
+    const state = live.status();
+    const hours = [1, 3, 6, 12, 24];
+    let pick = 3;
+    const chips = el("div", { class: "chips", role: "group", "aria-label": "How long" });
+    const chipButtons = hours.map((h) => {
+      const chip = el("button", { class: "chip" + (h === pick ? " on" : ""), type: "button",
+        "aria-pressed": String(h === pick) }, h === 24 ? "24 h" : `${h} h`);
+      chip.onclick = () => { pick = h; chipButtons.forEach((c, i) => {
+        c.classList.toggle("on", hours[i] === h); c.setAttribute("aria-pressed", String(hours[i] === h)); }); };
+      return chip;
+    });
+    chips.append(...chipButtons);
+
+    const liveBlock = state.session
+      ? (() => {
+          const until = new Date(state.session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const stop = el("button", { class: "danger", type: "button" }, "Stop live sharing");
+          stop.onclick = async () => { stop.disabled = true; await live.stopLive();
+            toast("Live sharing stopped. Your trail was removed.", "ok"); draw(); };
+          return el("div", { class: "stack" },
+            el("p", {}, el("strong", {}, "Sharing live"), ` until ${until}.`),
+            el("p", { class: "dim" }, "Keep Imhere open on screen. When the screen locks or you switch apps, your circle sees where you were last."),
+            switchRow("Keep the screen on while live", live.keepScreenOn(), (on) => live.setKeepScreenOn(on)),
+            stop);
+        })()
+      : (() => {
+          const go = el("button", { class: "primary", type: "button" }, icon("live"), "Start live sharing");
+          go.onclick = async () => { go.disabled = true; await live.startLive(pick);
+            toast(navigator.onLine ? "Live sharing started" : "Live sharing starts sending when you're back online", "ok"); draw(); };
+          return el("div", { class: "stack" },
+            el("p", { class: "dim" }, "For a walk home, a taxi or a hike: your circle follows your route while Imhere is open on screen. It stops by itself, and stopping deletes the route."),
+            el("div", { class: "field" }, el("span", { class: "label" }, "For how long?"), chips),
+            go);
+        })();
+
+    fill(box,
+      el("h3", {}, "Location sharing"),
+      el("p", { class: "dim" }, "Optional. These aren't check-ins: your circle sees them marked as automatic, with the time they were taken."),
+      switchRow("Share my location when I open Imhere", state.shareOnOpen, (on) => live.setShareOnOpen(on)),
+      el("p", { class: "dim" }, "Sends one \u201clast seen\u201d point when you open the app (at most every 10 minutes). Only the newest is kept. Turning it off removes it."),
+      el("div", { style: "border-top:1px solid var(--rule);margin:var(--s2) 0" }),
+      liveBlock,
+      state.waiting ? el("p", { class: "dim" }, `${state.waiting} location update${state.waiting > 1 ? "s" : ""} waiting for signal.`) : null);
+  };
+  draw();
+  return box;
+}
+
+function passcodeCard() {
+  const host = el("div", { class: "hidden" });
+  const userId = app.user?.id;
+  const has = passcode.hasPasscode(userId);
+  const change = el("button", { class: "secondary", type: "button" }, icon("lock"),
+    has ? "Change check-in passcode" : "No passcode yet: you'll set one at your next check-in");
+  change.disabled = !has;
+  change.onclick = () => {
+    host.classList.toggle("hidden");
+    if (!host.classList.contains("hidden")) passcode.changePasscodeForm(host, userId, () => {
+      host.classList.add("hidden"); toast("Passcode changed", "ok"); });
+  };
+  return el("div", { class: "card stack" },
+    el("h3", {}, "Check-in passcode"),
+    el("p", { class: "dim" }, "Asked for at every check-in. It's stored only on this device. Forgot it? Sign out and back in, then set a new one."),
+    change, host);
 }
 
 async function boot() {

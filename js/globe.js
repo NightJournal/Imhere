@@ -313,6 +313,16 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     .arcDashGap(0.025)
     .arcDashAnimateTime(0)
     .arcsTransitionDuration(0)
+    // Live sharing: the trail as a thin peach path, and a soft ring where
+    // the person was last seen. Separate layers, so pins are untouched.
+    .pathPoints((p) => p.points)
+    .pathPointLat((pt) => pt[0]).pathPointLng((pt) => pt[1]).pathPointAlt(() => 0.003)
+    .pathColor(() => ["rgba(238,147,114,0.35)", "rgba(238,147,114,1)"])
+    .pathStroke(1.4)
+    .pathTransitionDuration(0)
+    .ringLat((r) => r.lat).ringLng((r) => r.lon)
+    .ringColor(() => (t) => `rgba(125,98,196,${Math.max(0, 1 - t)})`)
+    .ringMaxRadius(0.9).ringPropagationSpeed(0.7).ringRepeatPeriod(1600)
     .htmlLat((d) => d.lat)
     .htmlLng((d) => d.lon)
     .htmlAltitude(0.004)
@@ -541,8 +551,17 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     container.replaceChildren();
   }
 
+  /** Live trail + last-seen ring (both optional). */
+  function showLive({ trail = [], lastSeen = null } = {}) {
+    const points = trail.map((p) => [p.latitude, p.longitude]);
+    globe.pathsData(points.length > 1 ? [{ points }] : []);
+    const head = trail.at(-1) || lastSeen;
+    globe.ringsData(head && !reducedMotion() ? [{ lat: head.latitude, lon: head.longitude }] : []);
+  }
+
   return {
     show,
+    showLive,
     destroy,
     flyTo: (lat, lon, altitude = 0.35) => { setRotating(false); fly(lat, lon, altitude); },
     flyToTrip(points) {

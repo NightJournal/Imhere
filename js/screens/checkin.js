@@ -11,6 +11,7 @@ import { el, fill, toast, TRANSPORT, cityOnly, flagEmoji, openSheet, closeSheet,
 import * as outbox from "../outbox.js";
 import { placeField } from "../geo.js";
 import { app, refreshProfile } from "../app.js";
+import { confirmPasscode } from "../passcode.js";
 
 /** Shrink a photo in the browser before upload: smaller, faster, cheaper. */
 async function compress(file, maxSide = 1600, quality = 0.82) {
@@ -141,8 +142,14 @@ export async function openCheckin({ onDone = () => {} } = {}) {
   // without signal it waits on the device and sends itself later. Either
   // way, pressing the button never loses what you wrote.
   const save = el("button", { class: "primary", disabled: "disabled" }, "Check in");
+  const pinHost = el("div", { class: "hidden" });
   save.onclick = async () => {
     if (!place) return;
+    // Every check-in is confirmed with the passcode (set on first use).
+    save.classList.add("hidden");
+    const confirmed = await confirmPasscode(pinHost, app.user?.id);
+    save.classList.remove("hidden");
+    if (!confirmed) return;
     save.disabled = true;
     save.textContent = "Saving…";
     try {
@@ -221,6 +228,7 @@ export async function openCheckin({ onDone = () => {} } = {}) {
       here,
       offlineHint,
       save,
+      pinHost,
       !travelling
         ? el("p", { class: "dim" },
             "You're not on a trip. This check-in is still saved. Start a trip on My Earth if you want your circle following along.")
