@@ -34,7 +34,14 @@ export async function signIn(email, password) {
 }
 
 export async function signUp(email, password, displayName) {
-  const result = unwrap(await db.auth.signUp({ email: email.trim(), password }));
+  // With "Confirm email" on, Supabase emails a link back to this page and no
+  // session exists until it's clicked. The name rides along in the account's
+  // metadata so the profile still gets it on that first sign-in.
+  const result = unwrap(await db.auth.signUp({
+    email: email.trim(), password,
+    options: { emailRedirectTo: location.origin + location.pathname,
+               data: displayName ? { full_name: displayName } : {} },
+  }));
   // If the project requires email confirmation there is no session yet;
   // the profile row is created on first successful sign-in instead.
   if (result.session) await ensureProfile(displayName);

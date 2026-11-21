@@ -31,9 +31,14 @@ async function render(container, { onSignedIn }) {
       if (mode === "signin") {
         await data.signIn(email.value, password.value);
       } else {
+        if (password.value.length < 8) {
+          error.textContent = "Use at least 8 characters for your password.";
+          submit.disabled = false;
+          return;
+        }
         const result = await data.signUp(email.value, password.value, name.value.trim());
         if (!result.session) {
-          error.textContent = "Check your email to confirm the account, then sign in.";
+          error.textContent = "Almost there: we've emailed you a link. Open it to confirm your account, then sign in here. (Check spam if it hasn't arrived in a few minutes.)";
           submit.disabled = false;
           return;
         }
