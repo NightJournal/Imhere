@@ -490,7 +490,14 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
 
   // ============================================================ public
 
-  function show({ checkIns = [], origins = [], tripID = null, person = {} } = {}) {
+  /**
+   * view: "trip"   — only the current (or latest) trip: its start, its
+   *                  stops and the route between them;
+   *       "places" — one pin per place you've ever checked in, no routes;
+   *       "all"    — everything (pins for every check-in + current route).
+   * Visited countries are coloured in every view.
+   */
+  function show({ checkIns = [], origins = [], tripID = null, person = {}, view = "all", fly: flyHome = true } = {}) {
     // Visited = every country with a check-in (the origin doesn't count).
     const visited = new Set(checkIns.map((c) => mapCountry(c.country_code)).filter(Boolean));
     const key = [...visited].sort().join(",");
@@ -504,9 +511,22 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     capMode = "";
     updateCaps(globe.pointOfView().altitude);
 
-    const chronological = [...checkIns].reverse();           // oldest first
-    const currentTrip = tripID ?? checkIns[0]?.trip_id ?? null;
-    const origin = origins.find((o) => o.trip_id === currentTrip) || null;
+    const currentTrip = view === "trip"
+      ? (tripID ?? checkIns.find((c) => c.trip_id)?.trip_id ?? null)
+      : (tripID ?? checkIns[0]?.trip_id ?? null);
+    let shown = checkIns;                                    // newest first
+    if (view === "trip") shown = currentTrip ? checkIns.filter((c) => c.trip_id === currentTrip) : checkIns.slice(0, 1);
+    if (view === "places") {
+      const seenPlace = new Set();
+      shown = checkIns.filter((c) => {
+        const placeKey = (c.place_name || "").split(",")[0].trim().toLowerCase() || `${c.latitude.toFixed(2)},${c.longitude.toFixed(2)}`;
+        if (seenPlace.has(placeKey)) return false;
+        seenPlace.add(placeKey);
+        return true;
+      });
+    }
+    const chronological = [...shown].reverse();             // oldest first
+    const origin = view === "places" ? null : (origins.find((o) => o.trip_id === currentTrip) || null);
     const latestID = checkIns[0]?.id;
     const items = [];
     if (origin) items.push({ id: "origin-" + origin.trip_id, kind: "origin",
@@ -524,19 +544,34 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     state.items = items;
     state.visited = visited;
 
-    // Route: origin → stops of the current trip, in time order.
-    const route = [];
-    if (origin) route.push([origin.latitude, origin.longitude]);
-    for (const c of chronological) if (!currentTrip || c.trip_id === currentTrip) route.push([c.latitude, c.longitude]);
+    // Route: origin → stops of the current trip, in time order (not in "places").
     const arcs = [];
-    for (let i = 1; i < route.length; i++) arcs.push({ from: route[i - 1], to: route[i] });
+    if (view !== "places") {
+      const route = [];
+      if (origin) route.push([origin.latitude, origin.longitude]);
+      for (const c of [...checkIns].reverse()) {
+        if (currentTrip ? c.trip_id === currentTrip : view === "all") route.push([c.latitude, c.longitude]);
+      }
+      for (let i = 1; i < route.length; i++) arcs.push({ from: route[i - 1], to: route[i] });
+    }
     globe.arcsData(arcs);
 
     lastSignature = "";
     redrawPins();
-    const latest = checkIns[0];
-    if (latest) fly(latest.latitude, latest.longitude, ALT_HOME, 0);
-    else globe.pointOfView({ lat: 22.3, lng: 114.2, altitude: ALT_HOME }, 0);
+    if (flyHome) {
+      if (view === "trip" && items.length > 1) {
+        const points = items.map((i) => ({ lat: i.lat, lon: i.lon }));
+        const lat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+        const lon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+        let spread = 0;
+        for (const p of points) spread = Math.max(spread, Math.hypot(p.lat - lat, p.lon - lon));
+        fly(lat, lon, Math.max(0.35, Math.min(ALT_HOME, spread / 18)), 0);
+      } else {
+        const latest = checkIns[0];
+        if (latest) fly(latest.latitude, latest.longitude, ALT_HOME, 0);
+        else globe.pointOfView({ lat: 22.3, lng: 114.2, altitude: ALT_HOME }, 0);
+      }
+    }
     updateGlow(globe.pointOfView().altitude);
     setTimeout(redrawPins, 50);
   }

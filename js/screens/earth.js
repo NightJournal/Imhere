@@ -522,6 +522,33 @@ function memoryCards(checkIns, wrap) {
   return { overlay, row, update };
 }
 
+// ---- what the globe shows: this trip, or every place once ----
+const VIEW_KEY = "imhere.globeView";
+function globeViewSwitch(checkIns, origins, profile) {
+  const hasTrip = Boolean(profile?.current_trip_id || checkIns.some((c) => c.trip_id));
+  const tripLabel = profile?.current_trip_id ? "This trip" : "Latest trip";
+  let value = localStorage.getItem(VIEW_KEY) || (profile?.current_trip_id ? "trip" : "places");
+  if (value === "trip" && !hasTrip) value = "places";
+  const options = [["trip", tripLabel], ["places", "All places"]];
+  const buttons = options.map(([id, label]) => {
+    const button = el("button", { type: "button", class: "seg" + (id === value ? " on" : ""),
+      "aria-pressed": String(id === value) }, label);
+    if (id === "trip" && !hasTrip) { button.disabled = true; button.title = "Start a trip to see its route"; }
+    button.onclick = () => {
+      if (value === id) return;
+      value = id;
+      try { localStorage.setItem(VIEW_KEY, id); } catch {}
+      buttons.forEach((b, i) => { const on = options[i][0] === id; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+      globePane?.querySelector(".pin-card")?.remove();
+      globe?.show({ checkIns, origins, tripID: profile?.current_trip_id, view: id,
+                    person: { name: profile?.display_name, avatarURL: app.avatarURL } });
+    };
+    return button;
+  });
+  const element = el("div", { class: "globe-view", role: "group", "aria-label": "What the globe shows" }, buttons);
+  return { element, value: () => value };
+}
+
 async function render(container) {
   const { checkIns, origins, offline, at } = await loadEarth();
   const profile = app.profile;
@@ -551,7 +578,8 @@ async function render(container) {
 
   const slot = el("div", { class: "globe-pane", "aria-label": "Your interactive travel globe" });
   const memories = memoryCards(checkIns, null);
-  const globeWrap = el("div", { class: "globe-wrap" }, globePane || slot, memories.overlay);
+  const viewSwitch = globeViewSwitch(checkIns, origins, profile);
+  const globeWrap = el("div", { class: "globe-wrap" }, globePane || slot, memories.overlay, viewSwitch.element);
 
   const wide = window.matchMedia("(min-width: 1100px)").matches;
   const editor = wide && checkIns.length
@@ -594,7 +622,7 @@ async function render(container) {
     await ensureGlobe();
     if (!globePane.isConnected) globeWrap.firstElementChild.replaceWith(globePane);
     globePane.querySelector(".pin-card")?.remove();
-    globe.show({ checkIns, origins, tripID: profile?.current_trip_id,
+    globe.show({ checkIns, origins, tripID: profile?.current_trip_id, view: viewSwitch.value(),
                  person: { name: profile?.display_name, avatarURL: app.avatarURL } });
     if (!memoryListening) { globe.onMove(() => currentMemoryUpdate?.()); memoryListening = true; }
     currentMemoryUpdate = memories.update;
