@@ -121,7 +121,7 @@ function tripCard(profile, origins, checkIns, reload) {
   const end = el("button", { class: "ghost" }, "End trip");
   end.onclick = async () => {
     const sure = await confirmSheet("End this trip?",
-      "It moves into your history. Circle members only see history if you've allowed them.", "End trip");
+      "It moves into your past trips. People in your circle keep seeing it only if their Past trips switch is on and they joined before this trip started.", "End trip");
     if (!sure) return;
     try {
       await data.endCurrentTrip();

@@ -122,7 +122,7 @@ async function friendView(container, traveller, back) {
           : null,
         el("div", { class: "photo-slot" }))
     : el("section", { class: "card", style: "border-top:0" }, el("p", { class: "dim" },
-        "No check-ins visible yet. You'll see their current trip; older trips need their permission."));
+        "No check-ins to show. You'll see their current trip, and their past trips from after you joined if they've allowed it."));
 
   // Automatic location (only if they switched it on). Never called a check-in.
   const liveHead = liveData.trail.at(-1) || liveData.lastSeen;
@@ -324,15 +324,18 @@ async function render(container) {
     members.length
       ? members.map((member) => {
           const toggle = el("button",
-            { class: "chip" + (member.can_view_history ? " on" : ""), type: "button" },
-            member.can_view_history ? "History: on" : "History: off");
+            { class: "chip" + (member.can_view_history ? " on" : ""), type: "button",
+              "aria-pressed": String(Boolean(member.can_view_history)),
+              title: "Past trips they can see: only trips you started after they joined" },
+            member.can_view_history ? "Past trips: on" : "Past trips: off");
           toggle.onclick = async () => {
             const next = !member.can_view_history;
             await data.setHistoryAccess(member.member_id, next);
             member.can_view_history = next;
             toggle.classList.toggle("on", next);
-            toggle.textContent = next ? "History: on" : "History: off";
-            toast(next ? "They can now see your past trips" : "Past trips hidden again", "ok");
+            toggle.textContent = next ? "Past trips: on" : "Past trips: off";
+            toggle.setAttribute("aria-pressed", String(next));
+            toast(next ? `${member.display_name} can see trips you've started since they joined` : `${member.display_name} now only sees your current trip`, "ok");
           };
           const remove = el("button", { class: "icon-button", "aria-label": `Remove ${member.display_name}` }, icon("close"));
           remove.onclick = async () => {
@@ -358,7 +361,7 @@ async function render(container) {
   closeFriendGlobe();
   fill(container, el("div", { style: "padding-bottom:var(--s5)" }, invite), followingCard, myCircleCard,
     el("p", { class: "dim", style: "padding:var(--s3) 0" },
-      "Your circle always sees your current trip. Past trips are hidden until you switch History on for that person. Plans are shared one by one."));
+      "Everyone in your circle sees your current trip. With Past trips on, they also see trips you've started since they joined, never anything older. New people start with Past trips on; switch it off for anyone who should only see your current trip. Plans are shared one by one."));
 }
 
 export default { render };
