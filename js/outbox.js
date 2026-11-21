@@ -84,10 +84,11 @@ async function notify() {
  * needsName: true when the place label is only coordinates (made
  * offline with GPS) — the real name is looked up when it sends.
  */
-export async function enqueue(fields, photoBlob = null, { needsName = false } = {}) {
+export async function enqueue(fields, photoBlob = null, { needsName = false, groupId = null } = {}) {
   const owner = (await data.currentUser())?.id ?? null;
   const item = {
     owner,
+    groupId,
     id: crypto.randomUUID(),
     fields: { ...fields, created_at: new Date().toISOString() },
     photoBlob,
@@ -146,6 +147,12 @@ export function flush() {
             photoPath = await data.uploadPhoto(item.photoBlob);
           }
           await data.addCheckIn({ ...item.fields, photo_path: photoPath });
+          // "Check in for the group": copy it to the members who allow it.
+          // Safe to retry (the server makes at most one copy per person).
+          if (item.groupId) {
+            try { await data.shareCheckinWithGroup(item.id, item.groupId); }
+            catch (error) { if (isNetworkError(error)) throw error; /* group ended or left: just your own */ }
+          }
           await tx("readwrite", (store) => store.delete(item.id));
           sent++;
         } catch (error) {

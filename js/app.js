@@ -9,6 +9,7 @@ import { cropAvatar } from "./cropper.js";
 import * as data from "./db.js";
 import * as outbox from "./outbox.js";
 import authScreen, { redeemPendingInvite } from "./screens/auth.js";
+import { redeemPendingGroup } from "./screens/groups.js";
 import earthScreen from "./screens/earth.js";
 import { openCheckin } from "./screens/checkin.js";
 import plansScreen from "./screens/plans.js";
@@ -135,7 +136,7 @@ async function showSignedIn() {
 
   // Arrived through an invite link? Join now. (Covers the Google route too:
   // the token waited in sessionStorage while the page was away at Google.)
-  if (navigator.onLine) await redeemPendingInvite();
+  if (navigator.onLine) { await redeemPendingInvite(); await redeemPendingGroup(); }
 
   // Waiting check-ins send themselves when the signal comes back.
   outbox.startAutoFlush((sent) =>
@@ -397,6 +398,12 @@ async function boot() {
   const match = location.hash.match(/join=([0-9a-f-]{36})/i);
   if (match) {
     sessionStorage.setItem("pendingInvite", match[1]);
+    history.replaceState(null, "", location.pathname);
+  }
+  // A travel-group link (…/#group=<token>) works the same way.
+  const groupMatch = location.hash.match(/group=([0-9a-f-]{36})/i);
+  if (groupMatch) {
+    sessionStorage.setItem("pendingGroup", groupMatch[1]);
     history.replaceState(null, "", location.pathname);
   }
 

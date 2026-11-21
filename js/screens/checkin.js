@@ -12,6 +12,7 @@ import * as outbox from "../outbox.js";
 import { placeField } from "../geo.js";
 import { app, refreshProfile } from "../app.js";
 import { confirmPasscode } from "../passcode.js";
+import { activeGroups } from "./groups.js";
 
 /**
  * Shrink a photo in the browser before upload: smaller, faster, cheaper.
@@ -147,6 +148,25 @@ export async function openCheckin({ onDone = () => {} } = {}) {
   // without signal it waits on the device and sends itself later. Either
   // way, pressing the button never loses what you wrote.
   const save = el("button", { class: "primary", disabled: "disabled" }, "Check in");
+  // ---- check in for a travel group too ----
+  const groupBox = el("div", { class: "hidden" });
+  let groupChoice = null;
+  if (navigator.onLine) activeGroups().then((groups) => {
+    if (!groups.length) return;
+    const tick = el("input", { type: "checkbox" });
+    const pick = groups.length > 1
+      ? el("select", { "aria-label": "Which group" }, groups.map((g) => el("option", { value: g.id }, g.name))) : null;
+    const others = (g) => g.members.filter((m) => m.member_id !== app.user?.id).length;
+    const label = el("span", {}, el("strong", {}, groups.length > 1 ? "Also check in for a group" : `Also check in for “${groups[0].name}”`),
+      el("small", { class: "dim" }, "Adds it to the history of everyone in the group who allows it, so their circles see it too."));
+    const update = () => { groupChoice = tick.checked ? (pick ? pick.value : groups[0].id) : null; };
+    tick.onchange = update;
+    if (pick) pick.onchange = update;
+    fill(groupBox, el("label", { class: "choice" }, tick, label), pick);
+    groupBox.classList.remove("hidden");
+    if (!pick && others(groups[0]) === 0) groupBox.classList.add("hidden");   // nobody else in it yet
+  }).catch(() => {});
+
   const pinHost = el("div", { class: "hidden" });
   save.onclick = async () => {
     if (!place) return;
@@ -169,7 +189,7 @@ export async function openCheckin({ onDone = () => {} } = {}) {
         transport_number: mode && mode !== "car" ? (number.value.trim() || null) : null,
         transport_distance_km: mode === "car" && distance.value ? Number(distance.value) : null,
         transport_date: mode ? new Date(when.value + "T00:00:00").toISOString() : null,
-      }, photoBlob, { needsName: Boolean(place.needsName) });
+      }, photoBlob, { needsName: Boolean(place.needsName), groupId: groupChoice });
     } catch (error) {
       // Only reachable if the device's own storage fails (private mode, full disk).
       toast("Couldn't save on this device: " + (error.message || error), "error");
@@ -232,6 +252,7 @@ export async function openCheckin({ onDone = () => {} } = {}) {
     el("div", { class: "stack" },
       here,
       offlineHint,
+      groupBox,
       save,
       pinHost,
       !travelling

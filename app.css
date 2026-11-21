@@ -661,3 +661,8 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .live-summary strong { color: var(--ink); }
 .live-timeline { list-style: none; padding: 0; margin: var(--s2) 0 0; }
 .live-timeline .list-row { gap: var(--s3); font-size: 14.5px; }
+.choice small { display: block; margin-top: 2px; }
+.choice { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3); border: 1px solid var(--rule);
+  border-radius: 16px; background: var(--card); cursor: pointer; }
+.choice input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: 0 0 auto; }
+.choice span { display: grid; gap: 2px; }

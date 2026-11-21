@@ -399,6 +399,77 @@ export async function friendLive(ownerID) {
   };
 }
 
+// ============================================================ travel groups
+// People travelling together, until an end date. While a group runs its
+// members see each other's check-ins and live location from the group's
+// time; "check in for the group" copies a check-in to members who allow it.
+
+export async function myGroups() {
+  const rows = unwrap(await db.from("travel_groups")
+    .select("*, group_members(member_id, joined_at, allow_group_checkins, profiles(id, display_name, avatar_path))")
+    .order("ends_at", { ascending: false })) ?? [];
+  const now = Date.now();
+  return rows.map((g) => ({ ...g, active: new Date(g.ends_at).getTime() > now,
+    members: (g.group_members || []).map((m) => ({ ...m, display_name: m.profiles?.display_name || "Member",
+      avatar_path: m.profiles?.avatar_path || null })) }));
+}
+
+export async function createGroup(name, endsAt) {
+  return unwrap(await db.rpc("create_group", { group_name: name, ends: endsAt }));
+}
+
+export async function createGroupInvite(groupId, people = 1) {
+  return unwrap(await db.from("group_invites")
+    .insert({ group_id: groupId, max_uses: Math.min(20, Math.max(1, people)) }).select().single());
+}
+
+export async function groupInvites(groupId) {
+  const rows = unwrap(await db.from("group_invites").select("*").eq("group_id", groupId)
+    .order("created_at", { ascending: false })) ?? [];
+  return rows.filter((i) => i.use_count < i.max_uses);
+}
+
+export async function cancelGroupInvite(token) {
+  unwrap(await db.from("group_invites").delete().eq("token", token));
+}
+
+/** "ok" | "used" | "full" | "ended" | "invalid" */
+export async function joinGroup(token) {
+  return unwrap(await db.rpc("join_group", { invite_token: token.trim() }));
+}
+
+export function groupProblem(outcome) {
+  return {
+    used: "You've already used this group link. Ask for a new one.",
+    full: "This group link has been used by as many people as it allows.",
+    ended: "That travel group has already ended.",
+  }[outcome] || "That group link isn't valid any more.";
+}
+
+export async function leaveGroup(groupId) {
+  const user = await currentUser();
+  unwrap(await db.from("group_members").delete().eq("group_id", groupId).eq("member_id", user.id));
+}
+
+export async function removeGroupMember(groupId, memberId) {
+  unwrap(await db.from("group_members").delete().eq("group_id", groupId).eq("member_id", memberId));
+}
+
+export async function endGroup(groupId) {
+  unwrap(await db.rpc("end_group", { grp: groupId }));
+}
+
+export async function setGroupCheckins(groupId, allow) {
+  const user = await currentUser();
+  unwrap(await db.from("group_members").update({ allow_group_checkins: allow })
+    .eq("group_id", groupId).eq("member_id", user.id));
+}
+
+/** Copy one of my check-ins to the group's members. Returns how many got it. */
+export async function shareCheckinWithGroup(checkinId, groupId) {
+  return unwrap(await db.rpc("group_share_checkin", { checkin: checkinId, grp: groupId }));
+}
+
 // ============================================================ delete account
 // 1) remove the person's files (photo, profile picture, every poster) —
 //    storage files can only be removed through the storage API;

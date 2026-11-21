@@ -9,6 +9,7 @@ import * as data from "../db.js";
 import { setSubtitle } from "../app.js";
 import { mountGlobe } from "../globe.js";
 import { reverseGeocode } from "../geo.js";
+import { groupsCard } from "./groups.js";
 
 let friendGlobe = null;
 
@@ -115,6 +116,7 @@ async function friendView(container, traveller, back) {
             `${flagEmoji(latest.country_code)} ${cityOnly(latest.place_name)}`.trim()),
           el("span", { class: "pill " + (quiet ? "quiet" : "live") }, staleness(latest.created_at))),
         latest.message ? el("div", { style: "margin-top:8px" }, latest.message) : null,
+        latest.checked_in_by ? el("div", { class: "dim", style: "margin-top:6px" }, "Group check-in by someone they're travelling with") : null,
         latest.transport_mode
           ? el("div", { class: "dim", style: "margin-top:6px" },
               `${TRANSPORT[latest.transport_mode]} ${latest.transport_number || ""} ${
@@ -169,7 +171,7 @@ async function friendView(container, traveller, back) {
         checkIns.map((checkIn) => el("div", { class: "list-row" },
           el("div", { class: "rowline" },
             el("span", {}, `${flagEmoji(checkIn.country_code)} ${cityOnly(checkIn.place_name)}`.trim()),
-            el("span", { class: "dim" }, staleness(checkIn.created_at))))))
+            el("span", { class: "dim" }, (checkIn.checked_in_by ? "group · " : "") + staleness(checkIn.created_at))))))
     : null;
 
   document.body.classList.add("is-friend");
@@ -275,6 +277,15 @@ function inviteSheet(reload) {
     const match = code.value.match(/[0-9a-f-]{36}/i);
     if (!match) { toast("That doesn't look like an invite code", "error"); return; }
     join.disabled = true;
+    if (/group=/.test(code.value)) {            // a travel-group link pasted here
+      try {
+        const outcome = await data.joinGroup(match[0]);
+        if (outcome === "ok") { toast("You've joined the travel group", "ok"); closeSheet(); reload(); }
+        else toast(data.groupProblem(outcome), "error");
+      } catch (error) { toast(error.message, "error"); }
+      join.disabled = false;
+      return;
+    }
     try {
       const outcome = await data.redeemInvite(match[0]);
       if (outcome === "ok") { toast("You've joined their circle", "ok"); closeSheet(); reload(); }
@@ -359,7 +370,9 @@ async function render(container) {
           "Nobody can see you yet. Create an invite link and send it to someone."));
 
   closeFriendGlobe();
-  fill(container, el("div", { style: "padding-bottom:var(--s5)" }, invite), followingCard, myCircleCard,
+  const groups = await groupsCard({ reload, openMember: (person) => friendView(container, person, reload) })
+    .catch(() => null);
+  fill(container, el("div", { style: "padding-bottom:var(--s5)" }, invite), groups, followingCard, myCircleCard,
     el("p", { class: "dim", style: "padding:var(--s3) 0" },
       "Everyone in your circle sees your current trip. With Past trips on, they also see trips you've started since they joined, never anything older. New people start with Past trips on; switch it off for anyone who should only see your current trip. Plans are shared one by one."));
 }
