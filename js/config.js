@@ -25,3 +25,8 @@ export const AI_GENERATION_ENABLED = false;
 
 // A last check-in older than this is shown as "quiet" to the circle.
 export const STALE_HOURS = 36;
+
+// Sign in with Apple. Leave FALSE until it's set up in the Apple Developer
+// account and in Supabase → Authentication → Providers → Apple (see
+// README: "Sign in with Apple"). Turning it on early shows a button that fails.
+export const APPLE_SIGNIN_ENABLED = false;

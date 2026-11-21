@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------
 import { $, el, fill, toast, openSheet, closeSheet, confirmSheet, icon, avatarElement, sparkle } from "./ui.js";
 import { openPrivacy } from "./privacy.js";
+import { cropAvatar } from "./cropper.js";
 import * as data from "./db.js";
 import * as outbox from "./outbox.js";
 import authScreen, { redeemPendingInvite } from "./screens/auth.js";
@@ -161,19 +162,6 @@ async function showSignedOut() {
   await authScreen.render($("screen"), { onSignedIn: showSignedIn });
 }
 
-/** Shrink and square-crop a picture for the avatar: 400×400 JPEG. */
-async function squareAvatar(file) {
-  const bitmap = await createImageBitmap(file);
-  const side = Math.min(bitmap.width, bitmap.height);
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 400;
-  canvas.getContext("2d").drawImage(bitmap,
-    (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 400, 400);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
-  if (!blob) throw new Error("Couldn't prepare that picture.");
-  return blob;
-}
-
 function accountSheet() {
   const name = app.profile?.display_name || "";
   const face = avatarElement(name, app.avatarURL, "lg");
@@ -186,16 +174,16 @@ function accountSheet() {
   fileInput.onchange = async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
-    change.disabled = true;
+    // The cropper takes over the sheet; the You sheet comes back afterwards.
+    const blob = await cropAvatar(file).catch(() => null);
+    if (!blob) { accountSheet(); return; }
     try {
-      const blob = await squareAvatar(file);
       await data.uploadAvatar(blob);
       await refreshProfile();
-      fill(face, el("img", { src: app.avatarURL || URL.createObjectURL(blob), alt: "" }));
       toast("Profile photo updated", "ok");
       if (app.tab === "earth") go("earth");
     } catch (error) { toast(error.message || "Couldn't upload that photo", "error"); }
-    change.disabled = false;
+    accountSheet();
   };
   if (remove) remove.onclick = async () => {
     remove.disabled = true;

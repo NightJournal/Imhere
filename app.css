@@ -630,3 +630,14 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .live-card .icon { width: 20px; height: 20px; color: var(--accent-ink); }
 .danger-text { color: var(--danger); }
 .danger-text .icon { width: 18px; height: 18px; }
+
+/* ================================================================ avatar cropper */
+.crop-stage { display: flex; justify-content: center; }
+.crop-canvas { border-radius: 20px; background: var(--paper-2); touch-action: none; cursor: grab;
+  box-shadow: var(--shadow); }
+.crop-canvas:active { cursor: grabbing; }
+.crop-canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.crop-controls { display: flex; align-items: center; gap: var(--s3); max-width: 340px; margin: var(--s4) auto 0; }
+.crop-zoom { flex: 1; accent-color: var(--accent); }
+/* Apple asks for a black (or white) button with plain text. */
+button.apple { background: #000; color: #fff; border-color: #000; }

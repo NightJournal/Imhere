@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------
 import { el, fill, toast } from "../ui.js";
 import * as data from "../db.js";
+import { APPLE_SIGNIN_ENABLED } from "../config.js";
 import { openPrivacy } from "../privacy.js";
 
 function privacyLink() {
@@ -63,6 +64,16 @@ async function render(container, { onSignedIn }) {
       google.textContent = "Continue with Google";
     }
   };
+  // Apple: hidden until it's configured (config.js).
+  const apple = APPLE_SIGNIN_ENABLED
+    ? el("button", { class: "secondary apple", type: "button" }, "Continue with Apple")
+    : null;
+  if (apple) apple.onclick = async () => {
+    error.textContent = "";
+    apple.disabled = true;
+    try { await data.signInWithApple(); }
+    catch (problem) { error.textContent = problem.message || "Apple sign-in isn't available right now."; apple.disabled = false; }
+  };
   const divider = el("div", { class: "divider" }, "or use email");
 
   const swap = el("button", { class: "ghost" },
@@ -77,7 +88,7 @@ async function render(container, { onSignedIn }) {
         el("p", { class: "lede", style: "margin-top:var(--s2)" },
           "Tell the people who care about you where you are.")),
       el("div", { class: "auth-form stack" },
-        google, divider,
+        apple, google, divider,
         mode === "signup"
           ? el("label", { class: "field" }, el("span", { class: "label" }, "Your name"), name)
           : null,
