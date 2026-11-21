@@ -319,6 +319,9 @@ function makePinElement(item, handlers) {
   if (item.fresh && !reducedMotion()) node.classList.add("globe-pin--bloom");
   // Stop the drag-to-spin from swallowing the tap.
   node.addEventListener("pointerdown", (event) => event.stopPropagation());
+  // Pointing at a pin pauses the idle spin, so it doesn't slide away from the cursor.
+  node.addEventListener("pointerenter", () => handlers.hold?.());
+  node.addEventListener("pointerleave", () => handlers.release?.());
   node.addEventListener("click", (event) => { event.stopPropagation(); handlers.tap(item); });
   return node;
 }
@@ -383,7 +386,7 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     .htmlTransitionDuration(0)
     .htmlElementVisibilityModifier((node, visible) => {
       node.style.opacity = visible ? "" : "0";
-      node.style.pointerEvents = visible ? "" : "none";
+      node.style.pointerEvents = visible ? "auto" : "none";   // globe.gl makes its HTML layer click-through; pins must opt back in
     });
 
   // Paper, not glass: no shine, and the painted texture glows a little on
@@ -518,13 +521,16 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     return placed;
   }
 
+  const holdSpin = () => { clearTimeout(idleTimer); setRotating(false); };
+  const releaseSpin = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => setRotating(true), IDLE_RESUME_MS); };
+
   let lastSignature = "";
   function redrawPins() {
     const list = clustered();
     const signature = list.map((p) => p.id + (p.members ? ":" + p.members.length : "")).join("|");
     if (signature === lastSignature) return;
     lastSignature = signature;
-    globe.htmlElementsData(list).htmlElement((item) => makePinElement(item, { tap }));
+    globe.htmlElementsData(list).htmlElement((item) => makePinElement(item, { tap, hold: holdSpin, release: releaseSpin }));
     for (const item of state.items) if (item.checkIn) seen.add(item.checkIn.id);
     state.items.forEach((item) => { item.fresh = false; });
   }
