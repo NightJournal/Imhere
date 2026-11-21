@@ -1,7 +1,6 @@
 # Imhere — web app
 
 The whole app in a browser: check in, keep a trip, share plans, run your circle.
-No App Store, no $99, works on iPhone, Android, Mac and Windows.
 
 ## First run (once)
 
