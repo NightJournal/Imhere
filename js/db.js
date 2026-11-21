@@ -57,15 +57,6 @@ export async function signInWithGoogle() {
   if (error) throw error;
 }
 
-/** Sign in with Apple — same round trip as Google. */
-export async function signInWithApple() {
-  const { error } = await db.auth.signInWithOAuth({
-    provider: "apple",
-    options: { redirectTo: location.origin + location.pathname },
-  });
-  if (error) throw error;
-}
-
 export async function signOut() {
   localStorage.removeItem("imhere.profile");   // don't leave the trip on a shared device
   await db.auth.signOut();
@@ -87,13 +78,10 @@ export async function ensureProfile(displayName) {
     return existing;
   }
   // First sign-in: Google gives us a real name; otherwise use the email's first part.
-  // Apple gives no name on the web, and "Hide My Email" addresses are random
-  // letters — use "Traveller" and let them set a real name in You.
   const meta = user.user_metadata || {};
-  const hidden = /@privaterelay\.appleid\.com$/i.test(user.email || "");
   return unwrap(await db.from("profiles").insert({
     id: user.id,
-    display_name: displayName || meta.full_name || meta.name || (hidden ? "Traveller" : (user.email || "").split("@")[0]),
+    display_name: displayName || meta.full_name || meta.name || (user.email || "").split("@")[0],
   }).select().single());
 }
 
