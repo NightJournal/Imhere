@@ -580,13 +580,12 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
     lastSignature = "";
     redrawPins();
     if (flyHome) {
-      if ((view === "trip" || view === "friends") && items.length > 1) {
-        const points = items.map((i) => ({ lat: i.lat, lon: i.lon }));
-        const lat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-        const lon = points.reduce((s, p) => s + p.lon, 0) / points.length;
-        let spread = 0;
-        for (const p of points) spread = Math.max(spread, Math.hypot(p.lat - lat, p.lon - lon));
-        fly(lat, lon, Math.max(0.35, Math.min(ALT_HOME, spread / 18)), 0);
+      // Always open on the whole globe (no zooming in); only WHERE it faces
+      // depends on the view: the middle of this trip, otherwise your latest pin.
+      if (view === "trip" && items.length > 1) {
+        const lat = items.reduce((s, p) => s + p.lat, 0) / items.length;
+        const lon = items.reduce((s, p) => s + p.lon, 0) / items.length;
+        fly(lat, lon, ALT_HOME, 0);
       } else {
         const latest = checkIns[0];
         if (latest) fly(latest.latitude, latest.longitude, ALT_HOME, 0);
