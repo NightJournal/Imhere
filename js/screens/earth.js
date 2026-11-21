@@ -539,37 +539,71 @@ function memoryCards(checkIns, wrap) {
 
 // ---- what the globe shows: this trip, or every place once ----
 const VIEW_KEY = "imhere.globeView";
-// Friends on the globe: fetched when that view is picked, kept for a minute.
+// Friends on the globe: fetched when that view is picked and refreshed every
+// minute while it's open. Pins appear straight away; place names (for hover
+// and tap) are filled in afterwards, so a slow lookup never delays the pins.
 let friendsCache = { at: 0, list: [] };
 const placeNames = new Map();
-async function loadFriendsForGlobe() {
-  if (Date.now() - friendsCache.at < 60_000) return friendsCache.list;
-  const list = await data.friendsOnEarth().catch(() => []);
+let friendsTimer = null;
+let currentGlobe = null;            // { checkIns, origins, profile, view }
+
+async function loadFriendsForGlobe(force = false) {
+  if (!force && Date.now() - friendsCache.at < 60_000) return friendsCache.list;
+  const list = await data.friendsOnEarth().catch(() => null);
+  if (!list) return friendsCache.list;          // keep the last good list on a network blip
   await Promise.all(list.map(async (f) => { f.avatarURL = await data.avatarURL(f.avatar_path).catch(() => null); }));
-  // Place names for hover/tap: check-ins already have one; live and last-seen
-  // points are looked up (one by one, gently) and remembered by position.
+  for (const f of list) {
+    if (f.place) f.placeLabel = cityOnly(f.place);
+    else f.placeLabel = placeNames.get(`${f.lat.toFixed(3)},${f.lon.toFixed(3)}`) ?? null;
+  }
+  friendsCache = { at: Date.now(), list };
+  return list;
+}
+
+/** Look up missing place names (gently), then redraw the pins without moving the camera. */
+async function nameFriends(list) {
+  let changed = false;
   for (const f of list.slice(0, 20)) {
-    if (f.place) { f.placeLabel = cityOnly(f.place); continue; }
+    if (f.placeLabel) continue;
     const key = `${f.lat.toFixed(3)},${f.lon.toFixed(3)}`;
     if (!placeNames.has(key)) {
       const found = await reverseGeocode(f.lat, f.lon).catch(() => null);
       placeNames.set(key, found ? found.label.split(",").slice(0, 2).join(",").trim() : null);
     }
     f.placeLabel = placeNames.get(key);
+    if (f.placeLabel) changed = true;
   }
-  friendsCache = { at: Date.now(), list };
-  return list;
+  if (changed && currentGlobe?.view === "friends") drawGlobe(false);
+}
+
+function drawGlobe(flyHome = true) {
+  const { checkIns, origins, profile, view } = currentGlobe;
+  globe?.show({ checkIns, origins, tripID: profile?.current_trip_id, view, fly: flyHome,
+                friends: view === "friends" ? friendsCache.list : [],
+                person: { name: profile?.display_name, avatarURL: app.avatarURL } });
 }
 
 async function showOnGlobe(checkIns, origins, profile, view) {
+  currentGlobe = { checkIns, origins, profile, view };
+  clearInterval(friendsTimer);
   const friends = view === "friends" && navigator.onLine ? await loadFriendsForGlobe() : [];
-  globe?.show({ checkIns, origins, tripID: profile?.current_trip_id, view, friends,
-                person: { name: profile?.display_name, avatarURL: app.avatarURL } });
-  if (view === "friends" && !friends.length && globePane) {
+  if (currentGlobe.view !== view) return;            // switched away while loading
+  drawGlobe(true);
+  if (view !== "friends") return;
+  if (!friends.length && globePane) {
     pinNote(globePane, navigator.onLine
       ? "No friends to show yet. People whose circle you're in, and people in your groups, appear here."
       : "Friends need signal to load.");
   }
+  nameFriends(friends);
+  // Keep it fresh while you're looking at it.
+  friendsTimer = setInterval(async () => {
+    if (currentGlobe?.view !== "friends" || app.tab !== "earth" || document.visibilityState !== "visible" || !navigator.onLine) return;
+    const list = await loadFriendsForGlobe(true);
+    if (currentGlobe?.view !== "friends") return;
+    drawGlobe(false);
+    nameFriends(list);
+  }, 60_000);
 }
 
 function pinNote(pane, text) {
@@ -626,20 +660,33 @@ async function render(container) {
   const viewSwitch = globeViewSwitch(checkIns, origins, profile);
   const globeWrap = el("div", { class: "globe-wrap" }, globePane || slot, memories.overlay, viewSwitch.element);
 
+  // Desktop: the postcard panel on the right can be hidden (remembered).
+  const PANEL_KEY = "imhere.keepsakePanel";
+  const panelHidden = localStorage.getItem(PANEL_KEY) === "hidden";
+  const setPanel = (hidden) => { try { localStorage.setItem(PANEL_KEY, hidden ? "hidden" : "shown"); } catch {} go("earth"); };
   const wide = window.matchMedia("(min-width: 1100px)").matches;
-  const editor = wide && checkIns.length
+  const editor = wide && checkIns.length && !panelHidden
     ? keepsakeEditor(checkIns, origins, profile?.current_trip_id ?? checkIns[0]?.trip_id ?? null) : null;
+  const hidePanel = el("button", { class: "icon-button", type: "button", "aria-label": "Hide the postcard panel",
+    title: "Hide the postcard panel" }, icon("next"));
+  hidePanel.onclick = () => setPanel(true);
   const panel = editor
     ? el("aside", { class: "editor-panel", "aria-label": "Make a little keepsake" },
         el("div", { class: "rowline", style: "margin-bottom:var(--s3)" },
-          el("h2", { class: "keepsake-head", style: "font-size:26px" }, "Make a little keepsake", sparkle())),
+          el("h2", { class: "keepsake-head", style: "font-size:26px" }, "Make a little keepsake", sparkle()),
+          hidePanel),
         editor.element)
     : null;
+  const showPanel = wide && checkIns.length && panelHidden
+    ? el("button", { class: "panel-reopen", type: "button", "aria-label": "Show the postcard panel" }, icon("card"), "Postcard")
+    : null;
+  if (showPanel) showPanel.onclick = () => setPanel(false);
 
   fill(container,
     el("div", { class: "earth" + (panel ? " with-editor" : "") },
       el("div", { class: "earth-main" },
         head,
+        showPanel,
         offline ? el("div", { class: "here", style: "background:var(--peach-soft);min-height:0;margin:var(--s3) 0" },
           icon("signal"), el("div", {}, el("div", { style: "font-weight:700" }, "No signal"),
             el("div", { class: "dim" }, `Showing your world as it was ${staleness(new Date(at).toISOString())}. Check-ins still work.`))) : null,

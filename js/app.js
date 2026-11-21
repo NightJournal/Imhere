@@ -330,7 +330,7 @@ function locationCard() {
           const until = new Date(state.session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           const stop = el("button", { class: "danger", type: "button" }, "Stop live sharing");
           stop.onclick = async () => { stop.disabled = true; await live.stopLive();
-            toast("Live sharing stopped. Your trail was removed.", "ok"); draw(); };
+            toast("Live sharing stopped. Your route was removed; your circle sees where you were last.", "ok"); draw(); };
           return el("div", { class: "stack" },
             el("p", {}, el("strong", {}, "Sharing live"), ` until ${until}.`),
             el("p", { class: "dim" }, "Keep Imhere open on screen. When the screen locks or you switch apps, your circle sees where you were last."),
@@ -342,7 +342,7 @@ function locationCard() {
           go.onclick = async () => { go.disabled = true; await live.startLive(pick);
             toast(navigator.onLine ? "Live sharing started" : "Live sharing starts sending when you're back online", "ok"); draw(); };
           return el("div", { class: "stack" },
-            el("p", { class: "dim" }, "For a walk home, a taxi or a hike: your circle follows your route while Imhere is open on screen. It stops by itself, and stopping deletes the route."),
+            el("p", { class: "dim" }, "For a walk home, a taxi or a hike: your circle follows your route while Imhere is open on screen. It stops by itself. When it stops, the route is deleted and only your final position stays, as \u201clast seen\u201d."),
             el("div", { class: "field" }, el("span", { class: "label" }, "For how long?"), chips),
             go);
         })();

@@ -368,9 +368,9 @@ export async function startLiveSession({ id, started_at, ends_at }) {
     .upsert({ id, started_at, ends_at }, { onConflict: "id", ignoreDuplicates: true }));
 }
 
-/** Deleting the session deletes its whole trail (on delete cascade). */
+/** Stop: the route is deleted, the final position stays as "last seen". */
 export async function stopLiveSession(id) {
-  unwrap(await db.from("live_sessions").delete().eq("id", id));
+  unwrap(await db.rpc("stop_live_session", { session: id }));
 }
 
 export async function addLivePoints(points) {
@@ -382,6 +382,9 @@ export async function deleteLastSeen() {
   const user = await currentUser();
   if (!user) return;
   unwrap(await db.from("live_points").delete().eq("user_id", user.id).eq("source", "open"));
+  // …and the position kept from a finished live session (deleting the ended
+  // session deletes its last point with it).
+  unwrap(await db.from("live_sessions").delete().eq("user_id", user.id).lte("ends_at", new Date().toISOString()));
 }
 
 /** What a circle member may see of someone: last-seen point + running trail (RLS decides). */
@@ -392,9 +395,13 @@ export async function friendLive(ownerID) {
     db.from("live_sessions").select("id, started_at, ends_at").eq("user_id", ownerID),
   ]);
   const all = points.data ?? [];
+  // Only running sessions come back, so a live point from any other session
+  // is the final position of a finished one: that counts as "last seen".
+  const running = new Set((sessions.data ?? []).map((s) => s.id));
+  const seen = all.filter((p) => p.source === "open" || !running.has(p.session_id));
   return {
-    lastSeen: all.filter((p) => p.source === "open").at(-1) ?? null,
-    trail: all.filter((p) => p.source === "live"),
+    lastSeen: seen.at(-1) ?? null,
+    trail: all.filter((p) => p.source === "live" && running.has(p.session_id)),
     session: (sessions.data ?? [])[0] ?? null,
   };
 }
@@ -501,19 +508,21 @@ export async function friendsOnEarth() {
   }
   const ids = [...people.keys()];
   if (!ids.length) return [];
-  const [checkIns, points] = await Promise.all([
+  const [checkIns, points, sessions] = await Promise.all([
     db.from("check_ins").select("user_id, latitude, longitude, place_name, country_code, created_at")
       .in("user_id", ids).order("created_at", { ascending: false }).limit(500),
-    db.from("live_points").select("user_id, latitude, longitude, recorded_at, source")
+    db.from("live_points").select("user_id, latitude, longitude, recorded_at, source, session_id")
       .in("user_id", ids).order("recorded_at", { ascending: false }).limit(500),
+    db.from("live_sessions").select("id").in("user_id", ids),     // running ones only (RLS)
   ]);
+  const running = new Set((sessions.data ?? []).map((s) => s.id));
   const latest = new Map();
   for (const c of checkIns.data ?? []) if (!latest.has(c.user_id))
     latest.set(c.user_id, { lat: c.latitude, lon: c.longitude, at: c.created_at, place: c.place_name, country: c.country_code, source: "checkin" });
   for (const p of points.data ?? []) {
     const have = latest.get(p.user_id);
     if (!have || new Date(p.recorded_at) > new Date(have.at)) {
-      latest.set(p.user_id, { lat: p.latitude, lon: p.longitude, at: p.recorded_at, place: null, source: p.source === "live" ? "live" : "lastSeen" });
+      latest.set(p.user_id, { lat: p.latitude, lon: p.longitude, at: p.recorded_at, place: null, source: p.source === "live" && running.has(p.session_id) ? "live" : "lastSeen" });
     }
   }
   return ids.filter((id) => latest.has(id)).map((id) => ({ ...people.get(id), ...latest.get(id) }));

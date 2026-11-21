@@ -678,3 +678,12 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
   border-radius: 16px; background: var(--card); cursor: pointer; }
 .choice input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: 0 0 auto; }
 .choice span { display: grid; gap: 2px; }
+
+/* ================================================================ postcard panel hide/show (desktop) */
+.earth-main { position: relative; }
+.panel-reopen { position: absolute; top: var(--s3); right: 0; z-index: 7; display: inline-flex; align-items: center; gap: 6px;
+  width: auto; min-height: 40px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--rule-2);
+  background: var(--card); color: var(--accent-ink); font: 700 14px var(--font-ui); cursor: pointer; box-shadow: var(--shadow); }
+.panel-reopen .icon { width: 18px; height: 18px; }
+.panel-reopen:hover { background: var(--accent-soft); }
+@media (max-width: 1099px) { .panel-reopen { display: none; } }

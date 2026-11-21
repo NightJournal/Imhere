@@ -90,11 +90,9 @@ export function flush() {
       if (!items.length) return;
       const sessions = items.filter((i) => i.kind === "session");
       for (const { kind, ...s } of sessions) await data.startLiveSession(s);
+      // Points first, then stops: stopping keeps the final point as "last seen".
       const stops = items.filter((i) => i.kind === "stop");
-      for (const s of stops) await data.stopLiveSession(s.id);
-      const stopped = new Set(stops.map((s) => s.id));
       const points = items.filter((i) => i.kind === "open" || i.kind === "live")
-        .filter((p) => !p.session_id || !stopped.has(p.session_id))
         .map(({ kind, ...p }) => ({ ...p, source: kind }));
       if (points.length) {
         try { await data.addLivePoints(points); }
@@ -106,6 +104,7 @@ export function flush() {
           if (keep.length) await data.addLivePoints(keep);
         }
       }
+      for (const stop of stops) await data.stopLiveSession(stop.id);
       write(K.queue(), queue().filter((i) => !items.some((done) => done.id === i.id)));
     } catch (error) {
       console.warn("Live location will retry:", error?.message || error);
@@ -230,7 +229,11 @@ export async function stopLive() {
   const s = read(K.session());
   endLocal();
   if (s) {
-    write(K.queue(), queue().filter((i) => i.session_id !== s.id && !(i.kind === "session" && i.id === s.id)));
+    // Unsent route points of this session: only the newest still matters
+    // (it becomes "last seen"); the server deletes the rest anyway.
+    const mine = queue().filter((i) => i.kind === "live" && i.session_id === s.id);
+    const newest = mine.reduce((a, b) => (!a || b.recorded_at > a.recorded_at ? b : a), null);
+    write(K.queue(), queue().filter((i) => !(i.kind === "live" && i.session_id === s.id && i !== newest && i.id !== newest?.id)));
     push({ kind: "stop", id: s.id });
     await flush();
   }
@@ -249,7 +252,7 @@ function banner() {
   if (!s) { bar.classList.add("hidden"); return; }
   const until = new Date(s.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const stop = el("button", { type: "button", class: "live-stop" }, "Stop");
-  stop.onclick = async () => { await stopLive(); toast("Live sharing stopped. Your trail was removed.", "ok"); };
+  stop.onclick = async () => { await stopLive(); toast("Live sharing stopped. Your route was removed; your circle sees where you were last.", "ok"); };
   bar.replaceChildren(el("span", { class: "live-dot", "aria-hidden": "true" }),
     el("span", {}, `Live until ${until}`), stop);
   bar.classList.remove("hidden");

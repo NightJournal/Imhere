@@ -20,7 +20,7 @@ export function openPrivacy() {
       "Remove someone and they lose access straight away. An old invite link won't let them back in."),
     section("Automatic location (only if you turn it on)",
       "Share when I open Imhere: one “last seen” point, replaced each time. Turning it off deletes it.",
-      "Live sharing: your route while Imhere is open on screen, for the time you choose (24 hours at most). Stopping deletes the route. Your circle sees these even when you're not on a trip, marked as automatic, not as check-ins."),
+      "Live sharing: your route while Imhere is open on screen, for the time you choose (24 hours at most). When it stops, the route is deleted and only your final position stays as \u201clast seen\u201d (turning off \u201cShare when I open Imhere\u201d removes that too). Your circle sees these even when you're not on a trip, marked as automatic, not as check-ins."),
     section("Friend groups",
       "A friend group has no end date. Its members see each other's current trip and live location only: no past trips, no check-ins outside a trip. Only the person who made it can invite, with links that expire after 7 days.",
       "\u201cShare with this group\u201d off pauses it both ways: they don't see you, you don't see them. Leaving, being removed or the group being closed stops it for good."),
