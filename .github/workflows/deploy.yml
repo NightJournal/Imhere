@@ -33,6 +33,15 @@ jobs:
           touch _site/.nojekyll
           ls -R _site | head -60
 
+      - name: Fail if any JavaScript file has a syntax error
+        run: |
+          # A single typo in one module blanks the whole app, so never deploy one.
+          status=0
+          for f in $(find _site/js -name '*.js'); do
+            node --input-type=module --check < "$f" || { echo "::error file=$f::Syntax error"; status=1; }
+          done
+          exit $status
+
       - name: Fail if a secret slipped into the client
         run: |
           if grep -rInE "(sk-[A-Za-z0-9]|AIza[0-9A-Za-z_-]{20}|service_role|SUPABASE_SERVICE|client_secret)" _site; then

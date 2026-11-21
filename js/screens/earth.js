@@ -600,18 +600,8 @@ async function render(container) {
   setSubtitle(subtitle);
   const reload = () => go("earth");
 
-  if (!checkIns.length && !profile?.current_trip_id) {
-    const first = el("button", { class: "primary" }, "Make your first check-in");
-    first.onclick = () => go("checkin");
-    document.body.classList.remove("is-earth");
-    fill(container, el("div", { class: "empty" },
-      el("div", { class: "big", "aria-hidden": "true" }),
-      el("p", {}, "Your little world is waiting"),
-      el("p", { class: "dim" },
-        "A check-in is two taps: where you are, and that you're okay. Your circle sees it straight away."),
-      first));
-    return;
-  }
+  // No check-ins yet: still show the globe (and Friends). Nothing starts
+  // until you press Check in or Start a trip.
 
   const head = el("header", { class: "earth-head" },
     el("h1", {}, "Your little world"),

@@ -146,9 +146,8 @@ async function showSignedIn() {
   live.start(app.user.id);
 
   // Offline, My Earth can't load anything new — the useful thing is Check in.
-  await go("earth");
-  if (!navigator.onLine) checkin();
-  else if (needsWelcome(app.user?.id)) showWelcome({ userId: app.user.id, onCheckin: checkin });
+  await go("earth");   // the globe first; Check in only opens when pressed
+  if (needsWelcome(app.user?.id)) showWelcome({ userId: app.user.id, onCheckin: checkin });
 }
 
 async function showSignedOut() {
