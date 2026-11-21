@@ -1,0 +1,28 @@
+{
+  "styles": [
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "note": "A small gouache scene on warm paper, with a widely spaced serif caption.",
+      "image": "data/styles/editorial-reference.png",
+      "prompt": "data/styles/editorial.txt",
+      "composite": false
+    },
+    {
+      "id": "field-notes",
+      "name": "Field Note",
+      "note": "Sparse stamped ink, visible paper grain, and a three-line typewriter caption.",
+      "image": "data/styles/field-notes-reference.png",
+      "prompt": "data/styles/field-notes.txt",
+      "composite": false
+    },
+    {
+      "id": "watercolor",
+      "name": "Watercolour",
+      "note": "Soft painted edges, an airy ivory page, and an italic serif caption.",
+      "image": "data/styles/watercolor-reference.png",
+      "prompt": "data/styles/watercolor.txt",
+      "composite": false
+    }
+  ]
+}

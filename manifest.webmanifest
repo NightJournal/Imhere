@@ -1,0 +1,17 @@
+{
+  "name": "Imhere",
+  "short_name": "Imhere",
+  "description": "Tell the people who care about you where you are.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBF8F3",
+  "theme_color": "#FBF8F3",
+  "icons": [
+    {
+      "src": "assets/watercolor-stand-logo.png",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

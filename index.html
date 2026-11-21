@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FCF7F2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Imhere">
+<meta name="description" content="Tell the people who care about you where you are.">
+<title>Imhere</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/watercolor-stand-logo.png">
+<link rel="icon" href="assets/watercolor-stand-logo.png">
+<link rel="preload" href="fonts/fredoka-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/nunito-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css?v=38">
+</head>
+<body>
+
+<div id="app">
+  <!-- Filled by js/app.js -->
+  <div id="boot" class="boot">
+    <div class="boot-mark" aria-hidden="true"></div>
+    <div class="boot-name">Imhere</div>
+  </div>
+
+  <!-- Desktop: side rail (hidden on phones by app.css) -->
+  <nav id="rail" class="rail hidden" aria-label="Main">
+    <div class="rail-brand"><img class="logo-globe" src="assets/watercolor-stand-logo.png" alt="">Imhere</div>
+    <button class="primary rail-checkin" data-action="checkin" type="button">Check in</button>
+    <button class="tab" data-tab="earth" type="button">My Earth</button>
+    <button class="tab" data-tab="plans" type="button">Plans</button>
+    <button class="tab" data-tab="circle" type="button">Circle</button>
+    <img class="rail-sprig" src="icons/sprig.svg" alt="">
+    <button class="rail-foot" id="railAccount" type="button"></button>
+  </nav>
+
+  <header id="topbar" class="topbar hidden">
+    <div class="topbar-title">
+      <span id="screenTitle">My Earth</span>
+      <small id="screenSubtitle"></small>
+    </div>
+  </header>
+
+  <main id="screen" class="screen"></main>
+
+  <!-- Phone: bottom bar with the raised Check in button -->
+  <nav id="tabbar" class="tabbar hidden" aria-label="Main">
+    <button class="tab" data-tab="earth" type="button">Earth</button>
+    <button class="tab" data-tab="plans" type="button">Plans</button>
+    <button class="tab-checkin" data-action="checkin" type="button">Check in</button>
+    <button class="tab" data-tab="circle" type="button">Circle</button>
+    <button class="tab" data-action="account" type="button">You</button>
+  </nav>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="sheet" class="sheet-backdrop hidden"><div class="sheet" id="sheetBody"></div></div>
+
+<!-- globe.gl is loaded on demand by js/globe.js (it's ~1.9 MB) -->
+<script src="vendor/supabase.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

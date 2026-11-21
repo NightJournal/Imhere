@@ -1,0 +1,49 @@
+# Deploys this repo (the Imhere website) to GitHub Pages on every push to main.
+# Static files, no build step: stage, scan for secrets, upload.
+name: Deploy Imhere
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage the site
+        run: |
+          mkdir _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' \
+                --exclude 'README.md' --exclude '.gitignore' ./ _site/
+          touch _site/.nojekyll
+          ls -R _site | head -60
+
+      - name: Fail if a secret slipped into the client
+        run: |
+          if grep -rInE "(sk-[A-Za-z0-9]|AIza[0-9A-Za-z_-]{20}|service_role|SUPABASE_SERVICE|client_secret)" _site; then
+            echo "::error::Something that looks like a secret is in the deploy. Stopping."
+            exit 1
+          fi
+          echo "No secrets found."
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
