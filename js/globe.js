@@ -223,11 +223,49 @@ function initials(name) {
   return (letters || "?").slice(0, 2).toUpperCase();
 }
 
+/** "Mia Chan · Central, Hong Kong · 10 min ago" */
+function tipText(friend) {
+  return [friend.name, friend.placeLabel || null, staleness(friend.at)].filter(Boolean).join(" · ");
+}
+
+/** Hover (mouse) or keyboard focus shows who and where, above the pin. */
+function attachTip(node, text) {
+  const show = () => {
+    if (node.querySelector(".globe-pin__tip")) return;
+    const tip = document.createElement("span");
+    tip.className = "globe-pin__tip";
+    tip.textContent = text;
+    node.append(tip);
+  };
+  const hide = () => node.querySelector(".globe-pin__tip")?.remove();
+  node.addEventListener("pointerenter", (event) => { if (event.pointerType === "mouse") show(); });
+  node.addEventListener("pointerleave", hide);
+  node.addEventListener("focus", show);
+  node.addEventListener("blur", hide);
+}
+
 function makePinElement(item, handlers) {
   const node = document.createElement("button");
   node.type = "button";
   node.className = `globe-pin globe-pin--${item.kind}`;
-  if (item.kind === "cluster") {
+  if (item.kind === "cluster" && item.friends) {
+    // Several friends close together: the first one's face + how many.
+    node.className = "globe-pin globe-pin--friend globe-pin--with-count";
+    const first = item.members[0];
+    const face = document.createElement("span");
+    face.className = "globe-pin__face";
+    if (first.avatarURL) { const image = document.createElement("img"); image.src = first.avatarURL; image.alt = ""; face.append(image); }
+    else face.textContent = initials(first.friend.name);
+    const count = document.createElement("span");
+    count.className = "globe-pin__count";
+    count.textContent = String(item.members.length);
+    const names = document.createElement("span");
+    names.className = "globe-pin__name";
+    names.textContent = `${first.friend.name.split(" ")[0]} +${item.members.length - 1}`;
+    node.append(face, count, names);
+    node.setAttribute("aria-label", `${item.members.map((m) => m.friend.name).join(", ")}: zoom in`);
+    attachTip(node, item.members.map((m) => tipText(m.friend)).join("\n"));
+  } else if (item.kind === "cluster") {
     node.setAttribute("aria-label", `${item.members.length} check-ins here — zoom in`);
     const latest = item.members.find((m) => m.kind === "latest");
     if (latest) {
@@ -269,7 +307,8 @@ function makePinElement(item, handlers) {
     name.textContent = item.friend.name.split(" ")[0];
     node.append(face, name);
     if (item.quiet) node.classList.add("globe-pin--quiet");
-    node.setAttribute("aria-label", `${item.friend.name}, ${staleness(item.friend.at)}`);
+    node.setAttribute("aria-label", tipText(item.friend));
+    attachTip(node, tipText(item.friend));
   } else if (item.kind === "origin") {
     node.innerHTML = PIN_SVG(PAPER, INK, INK);
     node.setAttribute("aria-label", `Trip start: ${cityOnly(item.origin.name)}`);
@@ -462,16 +501,19 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
       const screen = globe.getScreenCoords(item.lat, item.lon, 0);
       // The trip's start is drawn on its own (it often shares a spot with a check-in).
       if (item.kind === "origin") { placed.push({ ...item, screen }); continue; }
-      const hit = placed.find((p) => p.kind !== "origin" && p.screen && screen &&
+      // Friends only merge with friends, so a friend standing next to you
+      // never disappears into your own bubble.
+      const side = item.kind === "friend" ? "friend" : "own";
+      const hit = placed.find((p) => p.kind !== "origin" && p.side === side && p.screen && screen &&
         Math.hypot(p.screen.x - screen.x, p.screen.y - screen.y) < CLUSTER_PX);
       if (hit) {
         if (hit.kind !== "cluster") {
           const first = { ...hit };
-          Object.assign(hit, { kind: "cluster", members: [first], id: "cluster-" + first.id });
+          Object.assign(hit, { kind: "cluster", members: [first], id: "cluster-" + first.id, friends: side === "friend" });
         }
         hit.members.push(item);
         if (item.kind === "latest") hit.hasLatest = true;
-      } else placed.push({ ...item, screen });
+      } else placed.push({ ...item, screen, side });
     }
     return placed;
   }

@@ -297,6 +297,10 @@ details.more > .stack { padding-bottom: var(--s4); }
 .globe-pin__name { padding: 1px 7px; border-radius: 999px; background: rgba(255,253,250,.92); color: var(--ink);
   font: 700 11.5px/1.4 var(--font-ui); box-shadow: 0 1px 3px rgba(74,44,68,.18); white-space: nowrap; }
 .globe-pin--quiet { opacity: .6; }
+.globe-pin__tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  z-index: 3; padding: 6px 10px; border-radius: 10px; background: var(--ink); color: var(--paper);
+  font: 700 12.5px/1.35 var(--font-ui); white-space: pre; text-align: left; pointer-events: none;
+  box-shadow: var(--shadow-lift); }
 .globe-pin__count { position: absolute; top: -6px; right: -10px; min-width: 22px; height: 22px; padding: 0 6px;
   border-radius: 11px; background: var(--accent); color: #fff; font: 700 12px/18px var(--font-ui);
   text-align: center; border: 2px solid var(--card); }

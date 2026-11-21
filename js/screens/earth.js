@@ -401,8 +401,8 @@ function pinDetails(pane, item) {
   let body;
   if (item.kind === "friend") {
     const f = item.friend;
-    const place = el("div", { class: "place" }, f.place ? `${flagEmoji(f.country)} ${cityOnly(f.place)}`.trim() : "Locating place…");
-    if (!f.place) reverseGeocode(f.lat, f.lon).then((found) => {
+    const place = el("div", { class: "place" }, f.place ? `${flagEmoji(f.country)} ${cityOnly(f.place)}`.trim() : (f.placeLabel || "Locating place…"));
+    if (!f.place && !f.placeLabel) reverseGeocode(f.lat, f.lon).then((found) => {
       place.textContent = found ? `${flagEmoji(found.countryCode)} ${cityOnly(found.label)}`.trim() : "Shared location";
     }).catch(() => { place.textContent = "Shared location"; });
     const open = el("button", { class: "secondary", type: "button", style: "margin-top:8px;min-height:40px" }, "Open their page");
@@ -541,10 +541,22 @@ function memoryCards(checkIns, wrap) {
 const VIEW_KEY = "imhere.globeView";
 // Friends on the globe: fetched when that view is picked, kept for a minute.
 let friendsCache = { at: 0, list: [] };
+const placeNames = new Map();
 async function loadFriendsForGlobe() {
   if (Date.now() - friendsCache.at < 60_000) return friendsCache.list;
   const list = await data.friendsOnEarth().catch(() => []);
   await Promise.all(list.map(async (f) => { f.avatarURL = await data.avatarURL(f.avatar_path).catch(() => null); }));
+  // Place names for hover/tap: check-ins already have one; live and last-seen
+  // points are looked up (one by one, gently) and remembered by position.
+  for (const f of list.slice(0, 20)) {
+    if (f.place) { f.placeLabel = cityOnly(f.place); continue; }
+    const key = `${f.lat.toFixed(3)},${f.lon.toFixed(3)}`;
+    if (!placeNames.has(key)) {
+      const found = await reverseGeocode(f.lat, f.lon).catch(() => null);
+      placeNames.set(key, found ? found.label.split(",").slice(0, 2).join(",").trim() : null);
+    }
+    f.placeLabel = placeNames.get(key);
+  }
   friendsCache = { at: Date.now(), list };
   return list;
 }
