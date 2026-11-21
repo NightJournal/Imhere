@@ -353,8 +353,17 @@ export async function mountGlobe(container, { onPinTap = () => {}, onClusterList
   globe.lights([]); // Even pigment colors, without gray directional shadows.
   const material = globe.globeMaterial();
   material.shininess = 0;
+  // Before the painted texture has loaded the sphere would render BLACK
+  // (globe.gl's default material colour). Show a soft sea-blue instead, and
+  // keep the globe faded out until the painting is on it.
+  material.color?.set?.("#D6EAF2");
+  container.classList.add("globe-loading");
+  const reveal = () => container.classList.remove("globe-loading");
+  setTimeout(reveal, 2500);              // never leave it hidden if the texture is slow
   const brighten = () => {
     if (!material.map) return false;
+    material.color?.set?.("#ffffff");      // don't tint the painting
+    reveal();
     material.map.anisotropy = Math.min(16, globe.renderer().capabilities.getMaxAnisotropy());
     material.map.needsUpdate = true;
     material.emissiveMap = material.map;

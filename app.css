@@ -262,7 +262,10 @@ details.more > .stack { padding-bottom: var(--s4); }
 .globe-wrap { position: relative; margin: 0 calc(-1 * var(--s4)); }
 .globe-pane { position: relative; overflow: hidden; touch-action: none; user-select: none; }
 .earth .globe-pane { height: min(62vh, 520px); min-height: 320px; }
-.globe-stage { position: absolute; inset: 0; }
+.globe-stage { position: absolute; inset: 0; transition: opacity .45s ease-out; }
+.globe-glow { transition: opacity .45s ease-out; }
+.globe-loading .globe-stage, .globe-loading .globe-glow { opacity: 0 !important; }
+@media (prefers-reduced-motion: reduce) { .globe-stage, .globe-glow { transition: none; } }
 .globe-stage canvas { display: block; }
 /* a thin cyan-and-lavender rim with a restrained halo */
 .globe-glow {
