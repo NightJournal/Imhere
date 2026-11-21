@@ -121,16 +121,39 @@ export async function myCheckIns() {
  *           transport_mode, transport_number, transport_date,
  *           transport_distance_km, photo_path, trip_id }
  */
-export async function addCheckIn(fields) {
-  const user = await currentUser();
-  // Upsert on id: the outbox may retry after a lost response, and the
-  // second attempt must update the same row, never create a duplicate.
-  return unwrap(await db.from("check_ins").upsert({
-    user_id: user.id,
-    timezone_id: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    ...fields,
-  }, { onConflict: "id" }).select().single());
+export async function addCheckIn(fields, pin) {
+  // The server checks the passcode and adds the check-in in one step
+  // (add_checkin). A retry of a check-in that already arrived just says "ok".
+  const outcome = unwrap(await db.rpc("add_checkin", {
+    checkin: { timezone_id: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", ...fields },
+    pin: pin ?? "",
+  }));
+  if (outcome !== "ok") {
+    const error = new Error(passcodeProblem(outcome));
+    error.passcode = outcome;            // "wrong" | "locked:<s>" | "none"
+    throw error;
+  }
+  return outcome;
 }
+
+/** Plain words for a passcode outcome from the server. */
+export function passcodeProblem(outcome) {
+  if (outcome === "wrong") return "The passcode didn't match.";
+  if (outcome === "none") return "Set a check-in passcode first.";
+  if (outcome === "need_old") return "Enter your current passcode, or sign out and back in to set a new one.";
+  if (String(outcome).startsWith("locked:")) {
+    const minutes = Math.max(1, Math.ceil(Number(outcome.split(":")[1]) / 60));
+    return `Too many wrong tries. Try again in ${minutes} min, or sign out and back in to reset your passcode.`;
+  }
+  return "The passcode couldn't be checked.";
+}
+
+// ---- the check-in passcode, kept by the server (scrambled with bcrypt) ----
+export async function passcodeStatus() { return unwrap(await db.rpc("passcode_status")); }
+export async function setPasscodeOnServer(newPin, oldPin = null) {
+  return unwrap(await db.rpc("set_passcode", { new_pin: newPin, old_pin: oldPin }));
+}
+export async function checkPasscodeOnServer(pin) { return unwrap(await db.rpc("passcode_attempt", { pin })); }
 
 export async function deleteCheckIn(id) {
   return unwrap(await db.from("check_ins").delete().eq("id", id));

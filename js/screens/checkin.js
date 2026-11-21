@@ -11,7 +11,7 @@ import { el, fill, toast, TRANSPORT, cityOnly, flagEmoji, openSheet, closeSheet,
 import * as outbox from "../outbox.js";
 import { placeField } from "../geo.js";
 import { app, refreshProfile } from "../app.js";
-import { confirmPasscode } from "../passcode.js";
+import { confirmPasscode, askAgain } from "../passcode.js";
 import { activeGroups } from "./groups.js";
 
 /**
@@ -198,9 +198,9 @@ export async function openCheckin({ onDone = () => {} } = {}) {
     if (!place) return;
     // Every check-in is confirmed with the passcode (set on first use).
     save.classList.add("hidden");
-    const confirmed = await confirmPasscode(pinHost, app.user?.id);
+    const pin = await confirmPasscode(pinHost, app.user?.id);
     save.classList.remove("hidden");
-    if (!confirmed) return;
+    if (!pin) return;
     save.disabled = true;
     save.textContent = "Saving…";
     try {
@@ -216,7 +216,7 @@ export async function openCheckin({ onDone = () => {} } = {}) {
         transport_number: mode && mode !== "car" ? (number.value.trim() || null) : null,
         transport_distance_km: mode === "car" && distance.value ? Number(distance.value) : null,
         transport_date: mode ? new Date(when.value + "T00:00:00").toISOString() : null,
-      }, photoBlob, { needsName: Boolean(place.needsName), groupId: groupChoice });
+      }, photoBlob, { needsName: Boolean(place.needsName), groupId: groupChoice, pin });
     } catch (error) {
       // Only reachable if the device's own storage fails (private mode, full disk).
       toast("Couldn't save on this device: " + (error.message || error), "error");
@@ -259,9 +259,18 @@ export async function openCheckin({ onDone = () => {} } = {}) {
       ...refused.map((item) => {
         const drop = el("button", { class: "secondary", style: "margin-top:8px" }, "Discard this one");
         drop.onclick = () => outbox.discard(item.id);
+        // Refused because of the passcode: type it again to send.
+        const again = item.needsPasscode ? el("button", { class: "primary", style: "margin-top:8px" }, "Enter passcode to send") : null;
+        const againHost = el("div", { class: "hidden" });
+        if (again) again.onclick = async () => {
+          again.classList.add("hidden");
+          const pin = await askAgain(againHost, app.user?.id);
+          again.classList.remove("hidden");
+          if (pin) await outbox.retryWithPasscode(item.id, pin);
+        };
         return el("div", { style: "margin-top:10px" },
-          el("div", { class: "dim" }, `“${cityOnly(item.fields.place_name)}” was refused: ${item.lastError}`),
-          drop);
+          el("div", { class: "dim" }, `“${cityOnly(item.fields.place_name)}” wasn't sent: ${item.lastError}`),
+          again, againHost, drop);
       }));
     waitingCard.classList.remove("hidden");
   };

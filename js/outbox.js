@@ -84,11 +84,15 @@ async function notify() {
  * needsName: true when the place label is only coordinates (made
  * offline with GPS) — the real name is looked up when it sends.
  */
-export async function enqueue(fields, photoBlob = null, { needsName = false, groupId = null } = {}) {
+export async function enqueue(fields, photoBlob = null, { needsName = false, groupId = null, pin = null } = {}) {
   const owner = (await data.currentUser())?.id ?? null;
   const item = {
     owner,
     groupId,
+    // The passcode travels with the check-in until the server has checked
+    // it, then the whole item is deleted. Signing out wipes the outbox.
+    pin,
+    needsPasscode: false,
     id: crypto.randomUUID(),
     fields: { ...fields, created_at: new Date().toISOString() },
     photoBlob,
@@ -100,6 +104,16 @@ export async function enqueue(fields, photoBlob = null, { needsName = false, gro
   await tx("readwrite", (store) => store.put(item));
   await notify();
   return item;
+}
+
+/** A refused check-in: try again with a newly typed passcode. */
+export async function retryWithPasscode(id, pin) {
+  const item = await tx("readonly", (store) => promisify(store.get(id)));
+  if (!item) return;
+  Object.assign(item, { pin, needsPasscode: false, lastError: null });
+  await tx("readwrite", (store) => store.put(item));
+  await notify();
+  return flush();
 }
 
 export async function discard(id) {
@@ -127,13 +141,16 @@ export function flush() {
       // Only ever send the signed-in person's own check-ins. (Items from
       // another account on a shared device are left alone, never sent.)
       const me = (await data.currentUser())?.id;
-      const items = (await pending()).filter((item) => item.owner === me || !item.owner);   // no owner = saved before this check existed
+      const items = (await pending())
+        .filter((item) => item.owner === me || !item.owner)   // no owner = saved before this check existed
+        .filter((item) => !item.needsPasscode);               // refused: waits until you type the passcode again
       if (!items.length) return { sent, left: 0 };
 
       // Only the newest waiting item that has a photo gets to upload it.
       const newestWithPhoto = [...items].reverse().find((item) => item.photoBlob)?.id;
 
       for (const item of items) {
+        if (item.needsPasscode) continue;      // marked during this round
         try {
           if (item.needsName) {
             const place = await reverseGeocode(item.fields.latitude, item.fields.longitude);
@@ -146,7 +163,7 @@ export function flush() {
           if (item.photoBlob && item.id === newestWithPhoto) {
             photoPath = await data.uploadPhoto(item.photoBlob);
           }
-          await data.addCheckIn({ ...item.fields, photo_path: photoPath });
+          await data.addCheckIn({ ...item.fields, photo_path: photoPath }, item.pin);
           // "Check in for the group": copy it to the members who allow it.
           // Safe to retry (the server makes at most one copy per person).
           if (item.groupId) {
@@ -158,7 +175,20 @@ export function flush() {
         } catch (error) {
           item.tries += 1;
           item.lastError = isNetworkError(error) ? null : (error?.message || "Server refused it");
+          if (error?.passcode) {
+            // Never retry a refused code by itself (that would use up tries and
+            // lock the passcode): this one and any others typed with the same
+            // code wait until you enter it again.
+            const badPin = item.pin;
+            for (const other of items) {
+              if (other === item || other.pin !== badPin) continue;
+              Object.assign(other, { needsPasscode: true, pin: null, lastError: item.lastError });
+              await tx("readwrite", (store) => store.put(other));
+            }
+            item.needsPasscode = true; item.pin = null;
+          }
           await tx("readwrite", (store) => store.put(item));
+          if (error?.passcode) continue;
           if (isNetworkError(error)) break;   // signal dropped again — stop, retry later
         }
       }

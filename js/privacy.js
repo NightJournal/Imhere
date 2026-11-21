@@ -34,7 +34,7 @@ export function openPrivacy() {
       "\u201cOpen in Apple Maps / Google Maps\u201d on someone's live card hands that one position to the map app you choose, only when you tap it.",
       "The website itself is served by GitHub Pages. No ads, no analytics, no tracking."),
     section("On this phone",
-      "Your check-in passcode is kept only on this device, scrambled. Imhere never sends it anywhere.",
+      "Your check-in passcode is kept scrambled by Imhere's server (bcrypt), so nobody can read it, not even us, and every check-in is checked against it. This phone also keeps a scrambled copy so you can check in with no signal; the server checks again when it's sent. 5 wrong tries lock it for a while.",
       "Check-ins made without signal wait on this phone until they can be sent. Signing out deletes anything still waiting, so it can never be sent from someone else's account."),
     section("Getting your data removed",
       "Delete a check-in or plan from the app at any time. To delete everything, open You \u2192 Delete my account: your login, check-ins, plans, posters, photos, circle and location are all removed for good."));

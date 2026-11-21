@@ -363,10 +363,7 @@ function locationCard() {
 function passcodeCard() {
   const host = el("div", { class: "hidden" });
   const userId = app.user?.id;
-  const has = passcode.hasPasscode(userId);
-  const change = el("button", { class: "secondary", type: "button" }, icon("lock"),
-    has ? "Change check-in passcode" : "No passcode yet: you'll set one at your next check-in");
-  change.disabled = !has;
+  const change = el("button", { class: "secondary", type: "button" }, icon("lock"), "Change check-in passcode");
   change.onclick = () => {
     host.classList.toggle("hidden");
     if (!host.classList.contains("hidden")) passcode.changePasscodeForm(host, userId, () => {
@@ -374,7 +371,7 @@ function passcodeCard() {
   };
   return el("div", { class: "card stack" },
     el("h3", {}, "Check-in passcode"),
-    el("p", { class: "dim" }, "Asked for at every check-in. It's stored only on this device. Forgot it? Sign out and back in, then set a new one."),
+    el("p", { class: "dim" }, "Asked for at every check-in, on every device. Imhere keeps it scrambled, so nobody can read it, not even us. No passcode yet? You'll set one at your next check-in. Forgot it? Sign out and back in, then set a new one within 10 minutes."),
     change, host);
 }
 
