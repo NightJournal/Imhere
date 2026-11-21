@@ -167,6 +167,32 @@ export async function openCheckin({ onDone = () => {} } = {}) {
     if (!pick && others(groups[0]) === 0) groupBox.classList.add("hidden");   // nobody else in it yet
   }).catch(() => {});
 
+  // ---- outside a trip: share this one with my circle? ----
+  // (Trip check-ins follow the trip rules; this only matters off-trip.)
+  const SHARE_KEY = "imhere.shareUpdates";
+  let shareUpdate = localStorage.getItem(SHARE_KEY) !== "no";
+  const shareKnob = el("button", { class: "switch" + (shareUpdate ? " on" : ""), type: "button", role: "switch",
+    "aria-checked": String(shareUpdate), "aria-label": "Share with my circle" });
+  const shareNote = el("p", { class: "dim" });
+  const describeShare = () => {
+    shareNote.textContent = shareUpdate
+      ? "Your circle (and friend groups) will see this check-in. People who joined later won't see older ones."
+      : "Only you will see this one. Nobody else, unless you're in a travel group with them.";
+  };
+  shareKnob.onclick = () => {
+    shareUpdate = !shareKnob.classList.contains("on");
+    shareKnob.classList.toggle("on", shareUpdate);
+    shareKnob.setAttribute("aria-checked", String(shareUpdate));
+    try { localStorage.setItem(SHARE_KEY, shareUpdate ? "yes" : "no"); } catch {}
+    describeShare();
+  };
+  describeShare();
+  const shareBox = !travelling
+    ? el("div", { class: "card", style: "padding:var(--s3) var(--s4)" },
+        el("div", { class: "toggle-row" }, el("span", {}, el("strong", {}, "Share with my circle")), shareKnob),
+        shareNote)
+    : null;
+
   const pinHost = el("div", { class: "hidden" });
   save.onclick = async () => {
     if (!place) return;
@@ -185,6 +211,7 @@ export async function openCheckin({ onDone = () => {} } = {}) {
         country_code: place.countryCode ?? null,
         message: message.value.trim() || null,
         trip_id: app.profile?.current_trip_id ?? null,
+        shared: !travelling && shareUpdate,
         transport_mode: mode,
         transport_number: mode && mode !== "car" ? (number.value.trim() || null) : null,
         transport_distance_km: mode === "car" && distance.value ? Number(distance.value) : null,
@@ -252,13 +279,10 @@ export async function openCheckin({ onDone = () => {} } = {}) {
     el("div", { class: "stack" },
       here,
       offlineHint,
+      shareBox,
       groupBox,
       save,
-      pinHost,
-      !travelling
-        ? el("p", { class: "dim" },
-            "You're not on a trip. This check-in is still saved. Start a trip on My Earth if you want your circle following along.")
-        : null),
+      pinHost),
     el("div", { style: "height:var(--s4)" }),
     searchBox,
     details);

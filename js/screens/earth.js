@@ -382,6 +382,7 @@ function historyList(checkIns, currentTripID, reload) {
             [staleness(checkIn.created_at),
              checkIn.transport_mode ? TRANSPORT[checkIn.transport_mode] : null,
              checkIn.trip_id === currentTripID ? "current trip" : null,
+             !checkIn.trip_id ? (checkIn.shared ? "shared" : "only you") : null,
              checkIn.checked_in_by ? "group check-in" : null]
               .filter(Boolean).join(", ")),
           checkIn.message ? el("div", { style: "margin-top:4px" }, checkIn.message) : null),

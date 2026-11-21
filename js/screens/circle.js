@@ -124,7 +124,7 @@ async function friendView(container, traveller, back) {
           : null,
         el("div", { class: "photo-slot" }))
     : el("section", { class: "card", style: "border-top:0" }, el("p", { class: "dim" },
-        "No check-ins to show. You'll see their current trip, and their past trips from after you joined if they've allowed it."));
+        "No check-ins to show. You'll see their current trip, updates they share outside a trip, and their past trips from after you joined if they've allowed it."));
 
   // Automatic location (only if they switched it on). Never called a check-in.
   const liveHead = liveData.trail.at(-1) || liveData.lastSeen;

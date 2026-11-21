@@ -14,7 +14,7 @@ export function openPrivacy() {
       "Imhere is for telling a few chosen people where you are. Here is exactly what that means."),
     section("Who can see what",
       "Only people in your circle, and only people who joined with an invite link you made. Nobody else, and nobody who isn't signed in.",
-      "Check-ins: your circle sees your current trip. Past trips: each person has a switch (Circle \u2192 Past trips, on for new people). Even when it's on, they only see trips you started after they joined, never your older history. Check-ins made outside a trip stay private.",
+      "Check-ins: your circle sees your current trip. Past trips: each person has a switch (Circle \u2192 Past trips, on for new people). Even when it's on, they only see trips you started after they joined, never your older history. Outside a trip, each check-in has a \u201cShare with my circle\u201d switch: shared ones are seen by your circle (only those made after each person joined) and your friend groups (only your latest one); the rest stay private.",
       "Your one photo: your circle can open it only when they can see the check-in it belongs to. A new photo replaces the old one. Photos are shrunk on your phone before upload, which also removes hidden details like where the photo was taken.",
       "Your name, profile picture and travel plans you choose to share are visible to your circle.",
       "Remove someone and they lose access straight away. An old invite link won't let them back in."),
