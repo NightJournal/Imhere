@@ -25,6 +25,7 @@ export function openPrivacy() {
       "Your account, check-ins, plans and photos are stored with Supabase, in Singapore, protected by rules that check who is asking.",
       "To turn a location into a place name, Imhere sends the coordinates (not your name or account) to Photon, a public place-search service run by komoot in Germany. Like any website, it sees the internet address of the phone asking.",
       "If you sign in with Google, Google tells Imhere your email address and name.",
+      "\u201cOpen in Apple Maps / Google Maps\u201d on someone's live card hands that one position to the map app you choose, only when you tap it.",
       "The website itself is served by GitHub Pages. No ads, no analytics, no tracking."),
     section("On this phone",
       "Your check-in passcode is kept only on this device, scrambled. Imhere never sends it anywhere.",

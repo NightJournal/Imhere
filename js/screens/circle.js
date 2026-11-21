@@ -2,7 +2,7 @@
 // Circle — who can see me, who I can see, and invite links.
 // The friend view lives here too (tap a traveller to open it).
 // ---------------------------------------------------------------
-import { el, fill, toast, staleness, hoursSince, cityOnly, flagEmoji,
+import { el, fill, toast, staleness, hoursSince, cityOnly, flagEmoji, haversineKm,
          TRANSPORT, openSheet, closeSheet, confirmSheet, icon, avatarElement } from "../ui.js";
 import { STALE_HOURS } from "../config.js";
 import * as data from "../db.js";
@@ -15,6 +15,77 @@ let friendGlobe = null;
 function closeFriendGlobe() {
   if (friendGlobe) { friendGlobe.destroy(); friendGlobe = null; }
   document.body.classList.remove("is-friend");
+}
+
+// ============================================================ live location details
+// The globe can't show a walk or a taxi ride (its closest view is a few
+// hundred km across, with no streets), so the details are words and a
+// one-tap hand-off to a real map app.
+
+const hhmm = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const ll = (p) => ({ lat: p.latitude, lon: p.longitude });
+const coords = (p) => `${p.latitude.toFixed(4)}, ${p.longitude.toFixed(4)}`;
+
+/** "14 updates · 2.3 km moved · since 20:41" */
+function liveSummary(trail) {
+  let km = 0;
+  for (let i = 1; i < trail.length; i++) km += haversineKm(ll(trail[i - 1]), ll(trail[i]));
+  const distance = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+  return el("div", { class: "live-summary", style: "margin-top:8px" },
+    el("span", {}, el("strong", {}, String(trail.length)), trail.length === 1 ? " update" : " updates"),
+    el("span", {}, el("strong", {}, distance), " moved"),
+    el("span", {}, "since ", el("strong", {}, hhmm(trail[0].recorded_at))));
+}
+
+/** Open the latest position in the phone's own map app. */
+function mapsButtons(point, name) {
+  const label = encodeURIComponent(`${name || "Traveller"} (Imhere)`);
+  const apple = `https://maps.apple.com/?ll=${point.latitude},${point.longitude}&q=${label}`;
+  const google = `https://www.google.com/maps/search/?api=1&query=${point.latitude},${point.longitude}`;
+  const isApple = /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+  const link = (href, text, primary) => el("a", { href, target: "_blank", rel: "noopener noreferrer",
+    class: "button-link " + (primary ? "secondary" : "ghost") }, text);
+  return el("div", { class: "stack", style: "margin-top:10px;gap:6px" },
+    isApple ? link(apple, "Open in Apple Maps", true) : link(google, "Open in Google Maps", true),
+    isApple ? link(google, "Open in Google Maps", false) : link(apple, "Open in Apple Maps", false));
+}
+
+/**
+ * The route as a timeline: one line per stretch of at least ~150 m, newest
+ * first, with place names filled in one at a time (the place-name service
+ * asks for gentle use). Only looked up when the list is opened.
+ */
+function liveTimeline(trail) {
+  const stops = [];
+  for (const point of trail) {
+    const last = stops.at(-1);
+    if (!last || haversineKm(ll(last), ll(point)) >= 0.15) stops.push(point);
+    else last.until = point.recorded_at;           // stayed put: extend the stay
+  }
+  const latestFirst = stops.slice().reverse().slice(0, 30);
+  const rows = latestFirst.map((point) => {
+    const place = el("span", {}, coords(point));
+    const time = point.until && hhmm(point.until) !== hhmm(point.recorded_at)
+      ? `${hhmm(point.recorded_at)}–${hhmm(point.until)}` : hhmm(point.recorded_at);
+    return { point, place, row: el("li", { class: "list-row rowline" }, place, el("span", { class: "dim", style: "white-space:nowrap" }, time)) };
+  });
+  const list = el("ol", { class: "live-timeline", "aria-label": "Route, newest first" }, rows.map((r) => r.row));
+  const box = el("details", { class: "more", style: "margin-top:10px" },
+    el("summary", {}, `Route timeline (${stops.length} place${stops.length === 1 ? "" : "s"})`, icon("chevron")),
+    list,
+    stops.length > 30 ? el("p", { class: "dim" }, `Showing the latest 30 of ${stops.length}.`) : null);
+  let named = false;
+  box.addEventListener("toggle", async () => {
+    if (!box.open || named) return;
+    named = true;
+    for (const { point, place } of rows) {
+      if (!box.isConnected) return;
+      const found = await reverseGeocode(point.latitude, point.longitude).catch(() => null);
+      if (found) place.textContent = found.label.split(",").slice(0, 2).join(",").trim() || coords(point);
+      await new Promise((r) => setTimeout(r, 350));   // be gentle with the free service
+    }
+  });
+  return box;
 }
 
 // ============================================================ friend view
@@ -67,7 +138,7 @@ async function friendView(container, traveller, back) {
         el("div", { style: "margin-top:6px" }, livePlace),
         el("p", { class: "dim", style: "margin-top:6px" },
           liveData.session && liveData.trail.length
-            ? `Their route is on the globe until ${new Date(liveData.session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. It only updates while Imhere is open on their phone.`
+            ? `Sharing until ${new Date(liveData.session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. It only updates while Imhere is open on their phone.`
             : "Sent automatically when they opened Imhere. Not a check-in: it says where the phone was, not how they are."))
     : null;
   if (liveCard) {
@@ -75,9 +146,9 @@ async function friendView(container, traveller, back) {
       .then((place) => { livePlace.textContent = place ? `${flagEmoji(place.countryCode)} ${place.label}`.trim()
         : `${liveHead.latitude.toFixed(4)}, ${liveHead.longitude.toFixed(4)}`; })
       .catch(() => { livePlace.textContent = `${liveHead.latitude.toFixed(4)}, ${liveHead.longitude.toFixed(4)}`; });
-    const look = el("button", { class: "secondary", type: "button", style: "margin-top:10px" }, "Show on globe");
-    look.onclick = () => friendGlobe?.flyTo(liveHead.latitude, liveHead.longitude, 0.25);
-    liveCard.append(look);
+    if (liveData.session && liveData.trail.length) liveCard.append(liveSummary(liveData.trail));
+    liveCard.append(mapsButtons(liveHead, traveller.display_name));
+    if (liveData.session && liveData.trail.length > 1) liveCard.append(liveTimeline(liveData.trail));
   }
 
   const planCards = plans.length
