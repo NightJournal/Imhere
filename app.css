@@ -723,3 +723,15 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .postcard-tile .dim { margin-top: 6px; }
 .postcard-tile .postcard-caption { margin-top: 6px; font-size: 14.5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ================================================================ circle feed */
+.feed .feed-item { padding: var(--s4) 0; border-top: 1px solid var(--rule); }
+.feed .feed-item:first-of-type { border-top: 0; padding-top: var(--s2); }
+.feed-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: 8px; }
+.feed-who { display: inline-flex; align-items: center; gap: 10px; width: auto; min-height: 40px; padding: 0;
+  border: 0; background: none; cursor: pointer; color: var(--ink); text-align: left; }
+.feed-name { font-weight: 700; }
+.feed-photo { display: block; width: 100%; max-height: 360px; object-fit: cover; border-radius: 14px;
+  margin-top: 10px; background: var(--rule); aspect-ratio: 4 / 3; }
+.feed-image-button { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; margin-top: 8px; min-height: 0; }
+.feed-image { display: block; width: 100%; max-height: 460px; object-fit: contain; border-radius: 14px; background: var(--paper-2); }

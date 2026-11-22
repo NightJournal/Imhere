@@ -636,6 +636,49 @@ export async function friendsOnEarth() {
   return ids.filter((id) => latest.has(id)).map((id) => ({ ...people.get(id), ...latest.get(id) }));
 }
 
+// ============================================================ circle feed
+// Recent updates from everyone I can see (people I follow + my groups),
+// newest first. Row rules decide what each query returns.
+
+export async function circleFeed({ days = 7, limit = 40 } = {}) {
+  const me = (await currentUser())?.id;
+  const [travellers, groups] = await Promise.all([myTravellers().catch(() => []), myGroups().catch(() => [])]);
+  const people = new Map();
+  for (const t of travellers) people.set(t.id, { id: t.id, display_name: t.display_name || "Friend", avatar_path: t.avatar_path });
+  for (const g of groups.filter((g) => g.active)) {
+    for (const m of g.members) {
+      if (m.member_id === me || people.has(m.member_id)) continue;
+      people.set(m.member_id, { id: m.member_id, display_name: m.display_name, avatar_path: m.avatar_path });
+    }
+  }
+  const ids = [...people.keys()];
+  if (!ids.length) return { people, items: [] };
+  const since = new Date(Date.now() - days * 86400e3).toISOString();
+  const [checkIns, postcards, posters, plans, sessions] = await Promise.all([
+    db.from("check_ins").select("id, user_id, created_at, place_name, country_code, message, photo_path, transport_mode, transport_number, transport_distance_km, checked_in_by, trip_id")
+      .in("user_id", ids).gte("created_at", since).order("created_at", { ascending: false }).limit(limit),
+    db.from("postcards").select("*").in("user_id", ids).order("created_at", { ascending: false }).limit(20),
+    db.from("posters").select("*").in("user_id", ids).order("created_at", { ascending: false }).limit(20),
+    db.from("travel_plans").select("*, plan_stops(*)").in("user_id", ids).order("start_date").limit(20),
+    db.from("live_sessions").select("id, user_id, started_at, ends_at").in("user_id", ids),   // running ones only (RLS)
+  ]);
+  // Only each person's newest check-in still has its photo (one photo per person).
+  const newestPhoto = new Map();
+  for (const c of checkIns.data ?? []) if (c.photo_path && !newestPhoto.has(c.user_id)) newestPhoto.set(c.user_id, c.id);
+  const items = [];
+  for (const c of checkIns.data ?? []) items.push({ kind: "checkin", id: c.id, user_id: c.user_id, at: c.created_at,
+    row: { ...c, photo_path: newestPhoto.get(c.user_id) === c.id ? c.photo_path : null } });
+  for (const p of postcards.data ?? []) items.push({ kind: "postcard", id: p.id, user_id: p.user_id, at: p.created_at, row: p });
+  for (const p of posters.data ?? []) items.push({ kind: "poster", id: p.id, user_id: p.user_id, at: p.created_at, row: p });
+  for (const p of plans.data ?? []) {
+    const at = p.updated_at || p.created_at;
+    if (at >= since) items.push({ kind: "plan", id: p.id, user_id: p.user_id, at, row: p });
+  }
+  for (const s of sessions.data ?? []) items.push({ kind: "live", id: s.id, user_id: s.user_id, at: s.started_at, row: s });
+  items.sort((a, b) => (a.at < b.at ? 1 : -1));
+  return { people, items: items.slice(0, limit) };
+}
+
 // ============================================================ delete account
 // 1) remove the person's files (photo, profile picture, every poster) —
 //    storage files can only be removed through the storage API;
