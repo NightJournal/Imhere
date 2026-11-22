@@ -12,9 +12,20 @@
 import { el, fill, toast, openSheet, closeSheet, confirmSheet, icon, avatarElement } from "../ui.js";
 import * as data from "../db.js";
 import { app } from "../app.js";
+import { groupPostcardsSection } from "./shared-postcards.js";
 
 const day = (iso) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 const isoDate = (d) => d.toISOString().slice(0, 10);
+
+/** "Mia, Sam, Leo and you" — everyone's names, short enough for one line. */
+function memberNames(group) {
+  const me = app.user?.id;
+  const others = group.members.filter((m) => m.member_id !== me).map((m) => m.display_name || "Someone");
+  const shown = others.slice(0, 4);
+  const more = others.length - shown.length;
+  const parts = [...shown, ...(more > 0 ? [`${more} more`] : []), ...(group.members.some((m) => m.member_id === me) ? ["you"] : [])];
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0] || "";
+}
 
 /** The "Groups" card on the Circle screen. */
 export async function groupsCard({ reload, openMember }) {
@@ -31,8 +42,9 @@ export async function groupsCard({ reload, openMember }) {
       style: "width:100%;background:none;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left" },
       el("span", { style: "min-width:0" },
         el("span", { style: "display:block;font-weight:700" }, group.name),
-        el("span", { class: "dim" }, !group.active ? `Ended ${day(group.ends_at)}`
-          : `${group.kind === "friends" ? "Friend group" : `Travel group until ${day(group.ends_at)}`} · ${group.members.length} ${group.members.length === 1 ? "person" : "people"}`)),
+        el("span", { class: "dim", style: "display:block" }, memberNames(group)),
+        el("span", { class: "dim", style: "display:block;font-size:13px" }, !group.active ? `Ended ${day(group.ends_at)}`
+          : group.kind === "friends" ? "Friend group" : `Travel group until ${day(group.ends_at)}`)),
       el("span", { class: "pill " + (group.active ? "live" : "quiet") },
         !group.active ? "Ended" : group.kind === "friends" ? "Friends" : "Travel"));
     button.onclick = () => groupSheet(group, { reload, openMember });
@@ -161,7 +173,22 @@ function groupSheet(group, { reload, openMember }) {
     knob.disabled = false;
   };
 
-  const invites = isCreator && group.active ? inviteBlock(group) : null;
+  // Invites stay tucked away until you need them.
+  const invites = isCreator && group.active
+    ? el("details", { class: "card invite-details" },
+        el("summary", {}, friends ? "Invite friends" : "Invite people you're travelling with"),
+        inviteBlock(group))
+    : null;
+
+  // Postcards the members have posted (those you're allowed to see).
+  const postcardsSlot = el("div");
+  if (group.active) {
+    const names = new Map(group.members.map((m) => [m.member_id, m.display_name]));
+    data.postcardsOf(group.members.map((m) => m.member_id)).then((list) => {
+      const section = groupPostcardsSection(list, { me, names, reload });
+      if (section) postcardsSlot.replaceWith(section);
+    }).catch(() => {});
+  }
 
   const leave = !isCreator && group.active ? el("button", { class: "danger", type: "button" }, "Leave group") : null;
   const endLabel = friends ? "Close group" : "End group now";
@@ -200,6 +227,7 @@ function groupSheet(group, { reload, openMember }) {
         : friends ? "Friend group, no end date. Members see each other's current trip and live location."
         : `Travel group, runs until ${new Date(group.ends_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`),
     el("section", { class: "card" }, el("h3", {}, `People (${group.members.length})`), members),
+    postcardsSlot,
     group.active && friends ? el("section", { class: "card" },
       el("div", { class: "toggle-row" }, el("span", {}, "Share with this group"), shareKnob),
       el("p", { class: "dim" },
@@ -257,8 +285,7 @@ function inviteBlock(group) {
     create.disabled = false;
   };
   drawList();
-  return el("section", { class: "card stack" },
-    el("h3", {}, group.kind === "friends" ? "Invite friends" : "Invite people you're travelling with"),
+  return el("div", { class: "stack", style: "margin-top:var(--s3)" },
     el("div", { class: "field" }, el("span", { class: "label" }, "How many people can join with it"), chips),
     create, output, list);
 }

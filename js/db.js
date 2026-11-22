@@ -808,6 +808,13 @@ export async function myPostcards() {
     .order("created_at", { ascending: false })) ?? [];
 }
 
+/** Posted postcards from several people (e.g. a group), those I'm allowed to see. */
+export async function postcardsOf(userIDs) {
+  if (!userIDs.length) return [];
+  return (await db.from("postcards").select("*").in("user_id", userIDs)
+    .order("created_at", { ascending: false })).data ?? [];
+}
+
 export async function friendPostcards(ownerID) {
   return (await db.from("postcards").select("*").eq("user_id", ownerID)
     .order("created_at", { ascending: false })).data ?? [];
