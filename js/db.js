@@ -262,15 +262,38 @@ export async function myPlans() {
     .eq("user_id", user.id).order("start_date")) ?? [];
 }
 
-export async function savePlan(plan, stops, viewerIDs, groupIDs = []) {
+/**
+ * Plans other people shared with me (a person in their circle, or a group).
+ * Comes back with the owner's name and, for plans made together, whether I may edit.
+ */
+export async function sharedPlans() {
+  const user = await currentUser();
+  const plans = unwrap(await db.from("travel_plans").select("*, plan_stops(*)")
+    .neq("user_id", user.id).order("start_date")) ?? [];
+  const ids = [...new Set(plans.flatMap((p) => [p.user_id, p.updated_by]).filter(Boolean))];
+  const names = new Map();
+  if (ids.length) {
+    const people = (await db.from("profiles").select("id, display_name").in("id", ids)).data ?? [];
+    for (const person of people) names.set(person.id, person.display_name);
+  }
+  return plans.map((p) => ({ ...p, owner_name: names.get(p.user_id) || "A friend",
+    editor_name: p.updated_by ? names.get(p.updated_by) || null : null }));
+}
+
+/**
+ * Save a plan. The owner also sets who sees it and whether they may edit it;
+ * someone editing a plan made together only changes the plan and its stops.
+ */
+export async function savePlan(plan, stops, viewerIDs, groupIDs = [], { owner = true } = {}) {
   const user = await currentUser();
   const row = {
-    user_id: user.id,
     destination: plan.destination,
     start_date: plan.start_date,
     end_date: plan.end_date,
     note: plan.note || null,
   };
+  if (owner) { row.user_id = user.id; row.collaborative = !!plan.collaborative; }
+  if (!owner && !plan.id) throw new Error("Only the owner can create this plan.");
   const saved = plan.id
     ? unwrap(await db.from("travel_plans").update(row).eq("id", plan.id).select().single())
     : unwrap(await db.from("travel_plans").insert(row).select().single());
@@ -283,6 +306,7 @@ export async function savePlan(plan, stops, viewerIDs, groupIDs = []) {
       start_date: s.start_date, end_date: s.end_date, order_index: i,
     }))));
   }
+  if (!owner) return saved;
   await db.from("plan_viewers").delete().eq("plan_id", saved.id);
   if (viewerIDs?.length) {
     unwrap(await db.from("plan_viewers").insert(
@@ -379,19 +403,21 @@ export async function redeemInvite(token) {
 // RLS decides what comes back — no filtering needed on this side.
 
 export async function friendData(ownerID) {
-  const [checkIns, plans, origins, profile] = await Promise.all([
+  const [checkIns, plans, origins, profile, posters] = await Promise.all([
     db.from("check_ins").select("*").eq("user_id", ownerID)
       .order("created_at", { ascending: false }),
     db.from("travel_plans").select("*, plan_stops(*)").eq("user_id", ownerID)
       .order("start_date"),
     db.from("trip_origins").select("*").eq("user_id", ownerID),
     db.from("profiles").select("*").eq("id", ownerID).maybeSingle(),
+    db.from("posters").select("*").eq("user_id", ownerID).order("created_at", { ascending: false }),
   ]);
   return {
     checkIns: checkIns.data ?? [],
     plans: plans.data ?? [],
     origins: origins.data ?? [],
     profile: profile.data ?? null,
+    posters: posters.data ?? [],
   };
 }
 
@@ -676,4 +702,38 @@ export async function deletePoster(poster) {
   const paths = [poster.poster_path].filter(Boolean);
   if (paths.length) await db.storage.from(POSTER_BUCKET).remove(paths);
   return unwrap(await db.from("posters").delete().eq("id", poster.id));
+}
+
+// ============================================================ reactions
+// One emoji per person on a check-in, plan or poster. Row rules in the
+// database decide who can see and add them.
+
+const REACTION_COLUMN = { checkin: "check_in_id", plan: "plan_id", poster: "poster_id" };
+
+/** Reactions for many things at once → Map(id → [reaction]). */
+export async function reactionsFor(kind, ids) {
+  const column = REACTION_COLUMN[kind];
+  const byId = new Map();
+  const unique = [...new Set(ids)].filter(Boolean);
+  for (let i = 0; i < unique.length; i += 80) {   // keep each request URL short
+    const rows = unwrap(await db.from("reactions")
+      .select("id, user_id, reactor_name, emoji, created_at, " + column)
+      .in(column, unique.slice(i, i + 80)).order("created_at")) ?? [];
+    for (const row of rows) byId.set(row[column], [...(byId.get(row[column]) || []), row]);
+  }
+  return byId;
+}
+
+/** React (or change my reaction). Returns the saved row. */
+export async function setReaction(kind, id, emoji, mine) {
+  if (mine) {
+    return unwrap(await db.from("reactions").update({ emoji }).eq("id", mine.id)
+      .select("id, user_id, reactor_name, emoji, created_at").single());
+  }
+  return unwrap(await db.from("reactions").insert({ [REACTION_COLUMN[kind]]: id, emoji })
+    .select("id, user_id, reactor_name, emoji, created_at").single());
+}
+
+export async function removeReaction(reactionId) {
+  unwrap(await db.from("reactions").delete().eq("id", reactionId));
 }

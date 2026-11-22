@@ -14,6 +14,7 @@ import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle } 
 import { openPosterSheet, postersCard } from "./posters.js";
 import { mountGlobe } from "../globe.js";
 import { isNetworkError } from "../outbox.js";
+import { reactionSlot, fillReactions } from "../reactions.js";
 
 // The last thing My Earth showed, kept on the device so the globe still
 // works with no signal (on a plane, after a reload).
@@ -359,7 +360,10 @@ function keepsakesCard(checkIns) {
 }
 
 function historyList(checkIns, currentTripID, reload) {
+  const slots = [];
   const rows = checkIns.map((checkIn) => {
+    const slot = reactionSlot();
+    slots.push({ id: checkIn.id, slot, own: true });
     const remove = el("button", { class: "icon-button", "aria-label": `Delete check-in at ${cityOnly(checkIn.place_name)}` }, icon("trash"));
     remove.onclick = async () => {
       const sure = await confirmSheet("Delete this check-in?", checkIn.place_name);
@@ -385,9 +389,11 @@ function historyList(checkIns, currentTripID, reload) {
              !checkIn.trip_id ? (checkIn.shared ? "shared" : "only you") : null,
              checkIn.checked_in_by ? "group check-in" : null]
               .filter(Boolean).join(", ")),
-          checkIn.message ? el("div", { style: "margin-top:4px" }, checkIn.message) : null),
+          checkIn.message ? el("div", { style: "margin-top:4px" }, checkIn.message) : null,
+          slot),
         remove));
   });
+  fillReactions("checkin", slots);   // who reacted to my check-ins
 
   return el("section", { class: "card" },
     el("h3", {}, `All check-ins (${checkIns.length})`),

@@ -10,6 +10,7 @@ import { setSubtitle } from "../app.js";
 import { mountGlobe } from "../globe.js";
 import { reverseGeocode } from "../geo.js";
 import { groupsCard } from "./groups.js";
+import { reactionSlot, fillReactions, reactionBar } from "../reactions.js";
 
 let friendGlobe = null;
 
@@ -93,7 +94,7 @@ function liveTimeline(trail) {
 
 async function friendView(container, traveller, back) {
   fill(container, el("div", { class: "empty", "aria-busy": "true" }, el("p", { class: "dim" }, "Loading…")));
-  const [{ checkIns, plans, origins, profile }, liveData] = await Promise.all([
+  const [{ checkIns, plans, origins, profile, posters }, liveData] = await Promise.all([
     data.friendData(traveller.id),
     data.friendLive(traveller.id).catch(() => ({ lastSeen: null, trail: [], session: null })),
   ]);
@@ -109,6 +110,8 @@ async function friendView(container, traveller, back) {
     "aria-label": `Globe of ${traveller.display_name || "this traveller"}'s check-ins` });
 
   const quiet = latest && hoursSince(latest.created_at) > STALE_HOURS;
+  const checkInSlots = [];
+  const slotFor = (list, id) => { const slot = reactionSlot(); list.push({ id, slot, own: false }); return slot; };
   const latestCard = latest
     ? el("section", { class: "card", style: "border-top:0" },
         el("div", { class: "rowline" },
@@ -122,7 +125,8 @@ async function friendView(container, traveller, back) {
               `${TRANSPORT[latest.transport_mode]} ${latest.transport_number || ""} ${
                 latest.transport_distance_km ? Math.round(latest.transport_distance_km) + " km" : ""}`.trim())
           : null,
-        el("div", { class: "photo-slot" }))
+        el("div", { class: "photo-slot" }),
+        slotFor(checkInSlots, latest.id))
     : el("section", { class: "card", style: "border-top:0" }, el("p", { class: "dim" },
         "No check-ins to show. You'll see their current trip, updates they share outside a trip, and their past trips from after you joined if they've allowed it."));
 
@@ -153,6 +157,7 @@ async function friendView(container, traveller, back) {
     if (liveData.session && liveData.trail.length > 1) liveCard.append(liveTimeline(liveData.trail));
   }
 
+  const planSlots = [];
   const planCards = plans.length
     ? el("div", { class: "card" },
         el("h3", {}, "Plans shared with you"),
@@ -162,7 +167,32 @@ async function friendView(container, traveller, back) {
             el("span", { class: "dim" }, `${plan.start_date} – ${plan.end_date}`)),
           (plan.plan_stops || []).sort((a, b) => a.order_index - b.order_index)
             .map((stop) => el("div", { class: "dim" }, `· ${stop.place}`)),
-          plan.note ? el("div", { class: "dim" }, plan.note) : null)))
+          plan.note ? el("div", { class: "dim" }, plan.note) : null,
+          plan.collaborative ? el("div", { class: "dim" }, "Planning together: edit it from the Plans tab.") : null,
+          slotFor(planSlots, plan.id))))
+    : null;
+
+  // Their posters (only those from trips you're allowed to see).
+  const posterCard = posters.length
+    ? el("div", { class: "card" },
+        el("h3", {}, "Their posters"),
+        el("div", { class: "poster-grid" }, posters.map((poster) => {
+          const thumb = el("img", { alt: `Poster of ${cityOnly(poster.place_name)}`, loading: "lazy" });
+          data.posterURL(poster.poster_path).then((url) => { if (url) thumb.src = url; });
+          const tile = el("button", { class: "poster-tile", type: "button" }, thumb,
+            el("div", { class: "dim" }, `${flagEmoji(poster.country_code)} ${cityOnly(poster.place_name)}`.trim()));
+          tile.onclick = async () => {
+            const url = await data.posterURL(poster.poster_path);
+            if (!url) { toast("Couldn't open that poster", "error"); return; }
+            const bar = el("div", { style: "margin-top:var(--s3)" });
+            openSheet(cityOnly(poster.place_name),
+              el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: "" })), bar);
+            data.reactionsFor("poster", [poster.id])
+              .then((byId) => bar.append(reactionBar("poster", poster.id, byId.get(poster.id) || [])))
+              .catch(() => bar.append(reactionBar("poster", poster.id, [])));
+          };
+          return tile;
+        })))
     : null;
 
   const history = checkIns.length > 1
@@ -171,7 +201,9 @@ async function friendView(container, traveller, back) {
         checkIns.map((checkIn) => el("div", { class: "list-row" },
           el("div", { class: "rowline" },
             el("span", {}, `${flagEmoji(checkIn.country_code)} ${cityOnly(checkIn.place_name)}`.trim()),
-            el("span", { class: "dim" }, (checkIn.checked_in_by ? "group · " : "") + staleness(checkIn.created_at))))))
+            el("span", { class: "dim" }, (checkIn.checked_in_by ? "group · " : "") + staleness(checkIn.created_at))),
+          checkIn.message ? el("div", { class: "dim" }, checkIn.message) : null,
+          checkIn.id === latest?.id ? null : slotFor(checkInSlots, checkIn.id))))
     : null;
 
   document.body.classList.add("is-friend");
@@ -181,7 +213,9 @@ async function friendView(container, traveller, back) {
         el("div", { style: "display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0" },
           avatarElement(traveller.display_name, avatarURL),
           el("h2", { style: "font-size:24px" }, traveller.display_name || "Traveller")),
-        liveCard, latestCard, planCards, history)));
+        liveCard, latestCard, planCards, posterCard, history)));
+  fillReactions("checkin", checkInSlots);
+  fillReactions("plan", planSlots);
   closeFriendGlobe();
   document.body.classList.add("is-friend");
   try {

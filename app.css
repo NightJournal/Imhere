@@ -691,3 +691,26 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .panel-reopen .icon { width: 18px; height: 18px; }
 .panel-reopen:hover { background: var(--accent-soft); }
 @media (max-width: 1099px) { .panel-reopen { display: none; } }
+
+/* ================================================================ reactions */
+.reaction-slot:empty { display: none; }
+.reactions { margin-top: 8px; }
+.react-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.react-chip, .react-add {
+  width: auto; min-height: 34px; padding: 4px 11px; border-radius: 999px;
+  border: 1px solid var(--rule-2); background: var(--card); color: var(--ink);
+  font-size: 14.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.react-chip.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+.react-chip:disabled { cursor: default; opacity: 1; }
+.react-add { color: var(--accent-ink); font-weight: 700; border-style: dashed; }
+.react-picker { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px;
+  padding: 8px; border: 1px solid var(--rule-2); border-radius: var(--r-control); background: var(--card); }
+.react-quick { width: 40px; height: 40px; min-height: 40px; padding: 0; font-size: 21px; border: 0;
+  background: none; border-radius: 10px; cursor: pointer; }
+.react-quick:hover, .react-quick:focus-visible { background: var(--accent-soft); }
+.react-own { display: inline-flex; gap: 6px; align-items: center; flex: 1 1 150px; min-width: 150px; }
+.react-input { min-height: 40px; padding: 6px 10px; font-size: 18px; }
+.react-who { margin-top: 4px; font-size: 13px; }
+.react-x { width: 24px; height: 24px; min-height: 24px; padding: 0; margin-left: 2px; border: 0;
+  background: none; color: var(--ink); cursor: pointer; font-size: 16px; line-height: 1; }

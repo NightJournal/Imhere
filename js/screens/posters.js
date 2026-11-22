@@ -19,6 +19,7 @@ import { el, fill, toast, openSheet, closeSheet, confirmSheet, cityOnly, flagEmo
          staleness, icon } from "../ui.js";
 import { AI_GENERATION_ENABLED } from "../config.js";
 import * as data from "../db.js";
+import { fillReactions } from "../reactions.js";
 
 /** The only check-in the SERVER can generate from: photos are ephemeral, so
  *  every older check-in's photo_path now points at the newest picture. */
@@ -274,8 +275,10 @@ export async function postersCard(reload) {
           reload();
         } catch (error) { toast(error.message, "error"); }
       };
+      const reactions = el("div", { style: "margin-top:var(--s3)" });
       openSheet(cityOnly(poster.place_name),
-        el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: "" })), remove);
+        el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: "" })), reactions, remove);
+      fillReactions("poster", [{ id: poster.id, slot: reactions, own: true }]);
     };
     grid.append(tile);
   }
