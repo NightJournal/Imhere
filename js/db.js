@@ -258,11 +258,11 @@ export async function avatarURL(path) {
 export async function myPlans() {
   const user = await currentUser();
   return unwrap(await db.from("travel_plans")
-    .select("*, plan_stops(*), plan_viewers(viewer_id)")
+    .select("*, plan_stops(*), plan_viewers(viewer_id), plan_groups(group_id)")
     .eq("user_id", user.id).order("start_date")) ?? [];
 }
 
-export async function savePlan(plan, stops, viewerIDs) {
+export async function savePlan(plan, stops, viewerIDs, groupIDs = []) {
   const user = await currentUser();
   const row = {
     user_id: user.id,
@@ -287,6 +287,12 @@ export async function savePlan(plan, stops, viewerIDs) {
   if (viewerIDs?.length) {
     unwrap(await db.from("plan_viewers").insert(
       viewerIDs.map((viewer_id) => ({ plan_id: saved.id, viewer_id }))));
+  }
+  // Groups: whoever is in the group (now or later) sees the plan while it runs.
+  unwrap(await db.from("plan_groups").delete().eq("plan_id", saved.id));
+  if (groupIDs?.length) {
+    unwrap(await db.from("plan_groups").insert(
+      groupIDs.map((group_id) => ({ plan_id: saved.id, group_id }))));
   }
   return saved;
 }
@@ -507,6 +513,18 @@ export async function removeGroupMember(groupId, memberId) {
 
 export async function endGroup(groupId) {
   unwrap(await db.rpc("end_group", { grp: groupId }));
+}
+
+/** After a group has ended: take it off my own list (others keep it). */
+export async function removeEndedGroup(groupId) {
+  const outcome = unwrap(await db.rpc("remove_ended_group", { grp: groupId }));
+  if (outcome !== "ok") throw new Error(outcome === "still_running" ? "End the group first." : "You're not in this group any more.");
+}
+
+/** After a group has ended: the creator deletes it for every member. */
+export async function deleteGroupForEveryone(groupId) {
+  const outcome = unwrap(await db.rpc("delete_group_for_everyone", { grp: groupId }));
+  if (outcome !== "ok") throw new Error(outcome === "still_running" ? "End the group first." : "Only the person who started the group can delete it for everyone.");
 }
 
 export async function setGroupCheckins(groupId, allow) {

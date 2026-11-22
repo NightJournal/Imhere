@@ -36,7 +36,7 @@ function stopRow(stop, onRemove) {
   return row;
 }
 
-async function planSheet(plan, members, reload) {
+async function planSheet(plan, members, groups, reload) {
   const isNew = !plan;
   plan = plan || { destination: "", start_date: isoDate(), end_date: isoDate(), note: "" };
   const stops = (plan.plan_stops || [])
@@ -84,6 +84,22 @@ async function planSheet(plan, members, reload) {
     viewerBox.append(chip);
   }
 
+  // …and whole groups. A group share follows the group: new members see the
+  // plan, people who leave stop seeing it, and it stops when the group ends.
+  const chosenGroups = new Set((plan.plan_groups || []).map((g) => g.group_id));
+  const groupBox = el("div", { class: "chips" });
+  for (const group of groups) {
+    const on = chosenGroups.has(group.id);
+    const chip = el("button", { type: "button", class: "chip" + (on ? " on" : ""), "aria-pressed": String(on) },
+      `${group.name} (${group.members.length})`);
+    chip.onclick = () => {
+      if (chosenGroups.has(group.id)) chosenGroups.delete(group.id); else chosenGroups.add(group.id);
+      chip.classList.toggle("on");
+      chip.setAttribute("aria-pressed", String(chosenGroups.has(group.id)));
+    };
+    groupBox.append(chip);
+  }
+
   const save = el("button", { class: "primary" }, isNew ? "Save plan" : "Update plan");
   save.onclick = async () => {
     if (!plan.destination?.trim()) { toast("Give the plan a destination", "error"); return; }
@@ -93,7 +109,7 @@ async function planSheet(plan, members, reload) {
         { id: plan.id, destination: plan.destination.trim(),
           start_date: from.value, end_date: to.value, note: note.value.trim() },
         stops.filter((s) => s.place?.trim()),
-        [...chosenViewers]);
+        [...chosenViewers], [...chosenGroups]);
       closeSheet();
       toast("Plan saved", "ok");
       reload();
@@ -109,19 +125,24 @@ async function planSheet(plan, members, reload) {
       el("h3", { style: "margin-top:var(--s4)" }, "Stops"),
       stopsBox, addStop,
       el("h3", { style: "margin-top:var(--s4)" }, "Who can see this plan"),
-      members.length ? viewerBox
-        : el("p", { class: "dim" }, "Nobody in your circle yet — add someone on the Circle tab."),
+      el("div", { class: "field" }, el("span", { class: "label" }, "People in your circle"),
+        members.length ? viewerBox
+          : el("p", { class: "dim" }, "Nobody in your circle yet — add someone on the Circle tab.")),
+      groups.length ? el("div", { class: "field" }, el("span", { class: "label" }, "Groups"), groupBox) : null,
+      groups.length ? el("p", { class: "dim" },
+        "Everyone in a group you pick sees this plan while the group runs, including people who join later. Anyone who leaves, or pauses sharing in a friend group, stops seeing it.") : null,
       el("label", { class: "field" }, el("span", { class: "label" }, "Notes"), note),
       save));
 }
 
 async function render(container) {
-  const [plans, members] = await Promise.all([data.myPlans(), data.myCircle()]);
+  const [plans, members, allGroups] = await Promise.all([data.myPlans(), data.myCircle(), data.myGroups().catch(() => [])]);
   const active = members.filter((m) => m.status === "active");
+  const groups = allGroups.filter((g) => g.active);
   const reload = () => render(container);
 
   const add = el("button", { class: "primary" }, "+ New travel plan");
-  add.onclick = () => planSheet(null, active, reload);
+  add.onclick = () => planSheet(null, active, groups, reload);
 
   if (!plans.length) {
     fill(container, el("div", { class: "empty" },
@@ -136,8 +157,11 @@ async function render(container) {
   const cards = plans.map((plan) => {
     const stops = (plan.plan_stops || []).slice().sort((a, b) => a.order_index - b.order_index);
     const viewers = (plan.plan_viewers || []).length;
+    const groupNames = (plan.plan_groups || []).map((pg) => groups.find((g) => g.id === pg.group_id)?.name).filter(Boolean);
+    const sharedWith = [viewers ? `${viewers} ${viewers === 1 ? "person" : "people"}` : null,
+      groupNames.length ? groupNames.join(", ") : null].filter(Boolean).join(" and ");
     const edit = el("button", { class: "secondary" }, "Edit");
-    edit.onclick = () => planSheet(plan, active, reload);
+    edit.onclick = () => planSheet(plan, active, groups, reload);
     const remove = el("button", { class: "ghost" }, "Delete");
     remove.onclick = async () => {
       if (!(await confirmSheet("Delete this plan?", plan.destination))) return;
@@ -153,7 +177,7 @@ async function render(container) {
         `· ${stop.place} (${dateRange(stop.start_date, stop.end_date)})`)),
       plan.note ? el("div", { style: "margin-top:8px" }, plan.note) : null,
       el("div", { class: "dim", style: "margin-top:8px" },
-        viewers ? `Shared with ${viewers} ${viewers === 1 ? "person" : "people"}` : "Private: only you can see this"),
+        sharedWith ? `Shared with ${sharedWith}` : "Private: only you can see this"),
       el("div", { class: "button-row", style: "margin-top:var(--s4)" }, edit, remove));
   });
 

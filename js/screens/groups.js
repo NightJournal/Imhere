@@ -177,6 +177,23 @@ function groupSheet(group, { reload, openMember }) {
     catch (error) { toast(error.message, "error"); }
   };
 
+  // Ended groups: tidy up. Anyone can remove it from their own list; the
+  // creator can also delete it for everyone.
+  const hide = !group.active ? el("button", { class: "secondary", type: "button" }, "Remove from my list") : null;
+  if (hide) hide.onclick = async () => {
+    if (!(await confirmSheet("Remove from your list?",
+      "Only you stop seeing this group. Everyone else keeps it, without you in the member list. Check-ins in your history stay.", "Remove"))) return;
+    try { await data.removeEndedGroup(group.id); toast("Removed from your list", "ok"); closeSheet(); reload(); }
+    catch (error) { toast(error.message, "error"); }
+  };
+  const wipe = !group.active && isCreator ? el("button", { class: "danger", type: "button" }, "Delete for everyone") : null;
+  if (wipe) wipe.onclick = async () => {
+    if (!(await confirmSheet("Delete this group for everyone?",
+      "The group and its member list disappear for every member. Check-ins already in people's histories stay theirs. This can't be undone.", "Delete"))) return;
+    try { await data.deleteGroupForEveryone(group.id); toast("Group deleted", "ok"); closeSheet(); reload(); }
+    catch (error) { toast(error.message, "error"); }
+  };
+
   openSheet(group.name,
     el("p", { class: "dim", style: "margin-bottom:var(--s3)" },
       !group.active ? "This group has ended. Nobody in it can see the others any more."
@@ -192,7 +209,7 @@ function groupSheet(group, { reload, openMember }) {
       el("p", { class: "dim" },
         "When someone checks in “for the group”, it's added to your history too, marked with their name, so your own circle sees it. You can delete any of these.")) : null,
     invites,
-    el("div", { class: "stack", style: "margin-top:var(--s3)" }, leave, end));
+    el("div", { class: "stack", style: "margin-top:var(--s3)" }, leave, end, hide, wipe));
 }
 
 function inviteBlock(group) {
