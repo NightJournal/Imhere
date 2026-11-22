@@ -10,7 +10,8 @@ import { el, fill, staleness, cityOnly, flagEmoji, TRANSPORT, icon, sparkle, map
 import * as data from "../db.js";
 import { placeField, reverseGeocode } from "../geo.js";
 import { app, setSubtitle, refreshProfile, go } from "../app.js";
-import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle } from "../postcard.js";
+import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle, photoAspect } from "../postcard.js";
+import { cropImage } from "../cropper.js";
 import { openPosterSheet, postersCard } from "./posters.js";
 import { myPostcardsCard } from "./shared-postcards.js";
 import { audienceChoices, audiencePicker, editTripAudience } from "../trip-audience.js";
@@ -270,14 +271,40 @@ function keepsakeEditor(checkIns, origins, tripID) {
     segmented.append(button);
   }
 
+  // The postcard photo: the trip's check-in photo or one you choose, cropped
+  // to the shape of the photo on the card. Crop it again any time.
   let customPhoto = null;
+  let photoSource = null;          // the uncropped file/blob, so you can re-crop
+  const blobToImage = (blob) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob), image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that photo")); };
+    image.src = url;
+  });
+  async function cropAndUse(source) {
+    const cropped = await cropImage(source, { aspect: photoAspect(format), outWidth: 1000,
+      title: "Crop the postcard photo", hint: "Drag to move, pinch or use the slider to zoom. This is the part that goes on the postcard." });
+    if (!cropped) return;
+    try { customPhoto = await blobToImage(cropped); photoSource = source; draw(); }
+    catch (error) { toast(error.message, "error"); }
+  }
   const photoInput = el("input", { type: "file", accept: "image/*", "aria-label": "Choose postcard photo" });
   photoInput.onchange = () => {
     const file = photoInput.files?.[0]; if (!file) return;
-    const url = URL.createObjectURL(file), image = new Image();
-    image.onload = () => { customPhoto = image; URL.revokeObjectURL(url); draw(); };
-    image.onerror = () => { URL.revokeObjectURL(url); toast("Couldn't open that photo", "error"); };
-    image.src = url;
+    photoInput.value = "";
+    cropAndUse(file);
+  };
+  const cropButton = el("button", { type: "button", class: "secondary" }, "Crop photo");
+  cropButton.onclick = async () => {
+    let source = photoSource;
+    if (!source) {
+      // No photo chosen yet: crop the trip's check-in photo.
+      const newest = checkIns.find((c) => c.photo_path);
+      const url = newest ? await data.photoURL(newest.photo_path) : null;
+      source = url ? await fetch(url).then((r) => r.blob()).catch(() => null) : null;
+    }
+    if (!source) { toast("Choose a photo first", "error"); return; }
+    cropAndUse(source);
   };
   let lastCanvas = null;
   let photoCache = { key: null, image: null };
@@ -372,7 +399,8 @@ function keepsakeEditor(checkIns, origins, tripID) {
       el("div", { class: "keepsake-text" },
       el("label", { class: "field" }, el("span", { class: "label" }, "Title"), titleInput),
       el("label", { class: "field" }, el("span", { class: "label" }, "Places"), placesInput),
-      el("label", { class: "field" }, el("span", { class: "label" }, "Postcard photo"), photoInput))),
+      el("label", { class: "field" }, el("span", { class: "label" }, "Postcard photo"), photoInput),
+      cropButton)),
     save,
     el("label", { class: "field" }, el("span", { class: "label" }, "Caption, if you post it"), caption),
     post, postHint,

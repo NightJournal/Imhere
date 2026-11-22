@@ -213,6 +213,22 @@ export function openSheet(title, ...content) {
   return body;
 }
 
+/** Put the open sheet aside so another can open on top of it. Returns a
+ *  function that brings it back exactly as it was, or null if none was open. */
+export function stashSheet() {
+  const backdrop = $("sheet"), body = $("sheetBody");
+  if (backdrop.classList.contains("hidden") || !body.childNodes.length) return null;
+  const nodes = [...body.childNodes], scroll = body.scrollTop;
+  const onClose = sheetOnClose, opener = sheetOpener;
+  sheetOnClose = null;
+  return () => {
+    body.replaceChildren(...nodes);
+    sheetOnClose = onClose; sheetOpener = opener;
+    backdrop.classList.remove("hidden");
+    body.scrollTop = scroll;
+  };
+}
+
 /** Run something once when the current sheet closes. */
 export function onSheetClose(callback) { sheetOnClose = callback; }
 

@@ -975,3 +975,8 @@ function dateRange(origin, checkIns) {
 export function canvasToBlob(canvas) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
 }
+
+/** Shape (width / height) of the photo window on each format, for the cropper. */
+export function photoAspect(format) {
+  return format === "keepsake" ? 300 / 290 : format === "landscape" ? 360 / 280 : 380 / 300;
+}
