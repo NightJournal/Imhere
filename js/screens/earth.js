@@ -13,6 +13,7 @@ import { app, setSubtitle, refreshProfile, go } from "../app.js";
 import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle } from "../postcard.js";
 import { openPosterSheet, postersCard } from "./posters.js";
 import { myPostcardsCard } from "./shared-postcards.js";
+import { audienceChoices, audiencePicker, editTripAudience } from "../trip-audience.js";
 import { mountGlobe } from "../globe.js";
 import { isNetworkError } from "../outbox.js";
 import { reactionSlot, fillReactions } from "../reactions.js";
@@ -40,8 +41,9 @@ async function loadEarth() {
 let globe = null;
 let globePane = null;
 
-/** "Start a trip" — asks where you're setting off from. */
-function startTripSheet(onDone) {
+/** "Start a trip" — asks where you're setting off from, and who can see it. */
+async function startTripSheet(onDone) {
+  const audience = audiencePicker(await audienceChoices());
   let chosen = null;
   const field = placeField({
     placeholder: "Where are you setting off from?",
@@ -59,6 +61,7 @@ function startTripSheet(onDone) {
         latitude: chosen.lat, longitude: chosen.lon,
         country_code: chosen.countryCode,
         departure_at: new Date(departure.value + "T00:00:00").toISOString(),
+        audience: audience.value(),
       });
       await refreshProfile();
       closeSheet();
@@ -69,10 +72,13 @@ function startTripSheet(onDone) {
 
   openSheet("Start a trip",
     el("p", { class: "lede", style: "margin-bottom:var(--s4)" },
-      "Everything you check into from now on belongs to this trip. Your circle always sees the current trip; older trips need your permission."),
+      "Everything you check into from now on belongs to this trip. Once it's over, only people you let see past trips can still see it."),
     el("div", { class: "stack" },
       el("label", { class: "field" }, el("span", { class: "label" }, "Starting point"), field.element),
       el("label", { class: "field" }, el("span", { class: "label" }, "Departure date"), departure),
+      el("h3", { style: "margin-top:var(--s3)" }, "Who can see this trip"),
+      audience.element,
+      el("p", { class: "dim" }, "You can change this any time from the trip card."),
       begin));
 }
 
@@ -120,6 +126,8 @@ function tripCard(profile, origins, checkIns, reload) {
 
   const postcard = el("button", { class: "primary postcard-button-wide" }, icon("card"), "Postcard");
   postcard.onclick = () => postcardSheet(checkIns, origins, currentID);
+  const who = el("button", { class: "secondary" }, icon("circle"), "Who can see this trip");
+  who.onclick = () => editTripAudience(currentID, reload);
   const end = el("button", { class: "ghost" }, "End trip");
   end.onclick = async () => {
     const sure = await confirmSheet("End this trip?",
@@ -144,6 +152,7 @@ function tripCard(profile, origins, checkIns, reload) {
     el("p", { class: "dim" },
       travelled > 0 ? `${travelled.toLocaleString("en-GB")} km travelled` : "No distance yet"),
     el("div", { class: "button-row", style: "margin-top:var(--s4)" }, postcard, end),
+    el("div", { style: "margin-top:var(--s3)" }, who),
     points.length > 1 ? show : null);
 }
 
@@ -199,6 +208,8 @@ function keepsakeEditor(checkIns, origins, tripID) {
   // Post it inside Imhere: seen by the people who can see this trip, for 48 hours.
   const post = el("button", { class: "secondary" }, "Post to Imhere for 48 hours");
   const postHint = el("p", { class: "dim" });
+  const caption = el("textarea", { rows: "2", maxlength: "200", placeholder: "Add a caption (optional)",
+    "aria-label": "Caption for the posted postcard" });
   const updatePost = () => {
     const can = !!trip?.id;
     post.disabled = !can || !lastCanvas;
@@ -338,7 +349,9 @@ function keepsakeEditor(checkIns, origins, tripID) {
       ctx.drawImage(lastCanvas, 0, 0);
       const blob = await new Promise((resolve) => flat.toBlob(resolve, "image/jpeg", 0.88));
       if (!blob) throw new Error("Couldn't make the image file");
-      await data.postPostcard({ tripId: postingTrip, title: titleInput.value.trim() || titleInput.placeholder, blob });
+      await data.postPostcard({ tripId: postingTrip, title: titleInput.value.trim() || titleInput.placeholder,
+                                caption: caption.value, blob });
+      caption.value = "";
       toast("Posted. It disappears in 48 hours", "ok");
       if (document.querySelector("#sheet")?.contains(post)) closeSheet();
       if (app.tab === "earth") go("earth");
@@ -360,7 +373,9 @@ function keepsakeEditor(checkIns, origins, tripID) {
       el("label", { class: "field" }, el("span", { class: "label" }, "Title"), titleInput),
       el("label", { class: "field" }, el("span", { class: "label" }, "Places"), placesInput),
       el("label", { class: "field" }, el("span", { class: "label" }, "Postcard photo"), photoInput))),
-    save, post, postHint,
+    save,
+    el("label", { class: "field" }, el("span", { class: "label" }, "Caption, if you post it"), caption),
+    post, postHint,
     el("div", {},
       toggleRow("Photo", true, (on) => { options.photo = on; draw(); }),
       toggleRow("Distance travelled", true, (on) => { options.distance = on; draw(); }),

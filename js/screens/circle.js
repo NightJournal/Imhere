@@ -416,7 +416,7 @@ async function render(container, options = {}) {
     .catch(() => null);
   fill(container, el("div", { style: "padding-bottom:var(--s5)" }, invite), groups, followingCard, myCircleCard,
     el("p", { class: "dim", style: "padding:var(--s3) 0" },
-      "Everyone in your circle sees your current trip. With Past trips on, they also see trips you've started since they joined, never anything older. New people start with Past trips on; switch it off for anyone who should only see your current trip. Plans are shared one by one."));
+      "Everyone in your circle sees your current trip, unless you choose who can see it from the trip card. With Past trips on, they also see trips you've started since they joined, never anything older. New people start with Past trips on; switch it off for anyone who should only see your current trip. Plans are shared one by one."));
 }
 
 export default { render };

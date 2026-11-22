@@ -171,16 +171,50 @@ export async function myTripOrigins() {
 }
 
 /** Begin a new trip and make it current. Returns the new trip id. */
-export async function startTrip({ name, latitude, longitude, country_code, departure_at }) {
+export async function startTrip({ name, latitude, longitude, country_code, departure_at, audience = null }) {
   const user = await currentUser();
   const tripId = crypto.randomUUID();
   unwrap(await db.from("trip_origins").insert({
     trip_id: tripId, user_id: user.id, name,
     latitude, longitude, country_code: country_code ?? null,
     departure_at: departure_at || new Date().toISOString(),
+    audience_limited: !!audience?.limited,
   }));
+  if (audience?.limited) await writeAudience(tripId, user.id, audience);
   await setCurrentTrip(tripId);
   return tripId;
+}
+
+async function writeAudience(tripId, ownerId, { viewers = [], groups = [] }) {
+  if (viewers.length) unwrap(await db.from("trip_viewers")
+    .insert(viewers.map((viewer_id) => ({ trip_id: tripId, owner_id: ownerId, viewer_id }))));
+  if (groups.length) unwrap(await db.from("trip_groups")
+    .insert(groups.map((group_id) => ({ trip_id: tripId, owner_id: ownerId, group_id }))));
+}
+
+/** Who can see one of my trips: { limited, viewers: [ids], groups: [ids] }. */
+export async function tripAudience(tripId) {
+  const user = await currentUser();
+  const [origin, viewers, groups] = await Promise.all([
+    db.from("trip_origins").select("audience_limited").eq("trip_id", tripId).eq("user_id", user.id).maybeSingle(),
+    db.from("trip_viewers").select("viewer_id").eq("trip_id", tripId),
+    db.from("trip_groups").select("group_id").eq("trip_id", tripId),
+  ]);
+  return {
+    limited: !!origin.data?.audience_limited,
+    viewers: (viewers.data ?? []).map((r) => r.viewer_id),
+    groups: (groups.data ?? []).map((r) => r.group_id),
+  };
+}
+
+/** Change who can see a trip. Applies to the whole trip straight away. */
+export async function setTripAudience(tripId, audience) {
+  const user = await currentUser();
+  unwrap(await db.from("trip_viewers").delete().eq("trip_id", tripId).eq("owner_id", user.id));
+  unwrap(await db.from("trip_groups").delete().eq("trip_id", tripId).eq("owner_id", user.id));
+  if (audience.limited) await writeAudience(tripId, user.id, audience);
+  unwrap(await db.from("trip_origins").update({ audience_limited: !!audience.limited })
+    .eq("trip_id", tripId).eq("user_id", user.id));
 }
 
 export async function setCurrentTrip(tripId) {
@@ -710,7 +744,7 @@ export async function deletePoster(poster) {
 
 const POSTCARD_BUCKET = "postcards";
 
-export async function postPostcard({ tripId, title, blob }) {
+export async function postPostcard({ tripId, title, caption, blob }) {
   if (!tripId) throw new Error("Only postcards of a trip can be posted.");
   const user = await currentUser();
   const path = `${user.id}/${crypto.randomUUID()}.jpg`;
@@ -718,7 +752,8 @@ export async function postPostcard({ tripId, title, blob }) {
     .upload(path, blob, { contentType: "image/jpeg", upsert: false });
   if (error) throw error;
   const { data, error: rowError } = await db.from("postcards")
-    .insert({ user_id: user.id, trip_id: tripId, title: title?.slice(0, 120) || null, image_path: path })
+    .insert({ user_id: user.id, trip_id: tripId, title: title?.slice(0, 120) || null,
+              caption: caption?.trim().slice(0, 200) || null, image_path: path })
     .select().single();
   if (rowError) { await db.storage.from(POSTCARD_BUCKET).remove([path]); throw rowError; }
   return data;
