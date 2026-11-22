@@ -198,7 +198,7 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
 
   // ---- keep it ----
   const save = el("button", { class: "primary hidden", style: "margin-top:var(--s3)" },
-    "Share for 24 hours");
+    "Share for 48 hours");
   const download = el("button", { class: "ghost hidden", style: "margin-top:var(--s2)" }, "Download");
 
   save.onclick = async () => {
@@ -208,12 +208,12 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
       const posterBlob = await posterToBlob(posterCanvas);
       await data.savePoster({ checkIn, provider, style: chosenStyle?.id ?? null,
                               posterBlob });
-      toast("Poster shared. It disappears in 24 hours", "ok");
+      toast("Poster shared. It disappears in 48 hours", "ok");
       closeSheet();
       onSaved();
     } catch (error) {
       toast(error.message, "error");
-      save.disabled = false; save.textContent = "Share for 24 hours";
+      save.disabled = false; save.textContent = "Share for 48 hours";
     }
   };
 
@@ -248,16 +248,16 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
           generate)
       : null,
     el("p", { class: "dim", style: "margin-top:var(--s3)" },
-      "Posters stay in Imhere for 24 hours, then they're deleted for good. Download it to keep it."),
+      "Posters stay in Imhere for 48 hours, then they're deleted for good. Download it to keep it."),
     save, download);
 }
 
 // ============================================================ gallery
 
-/** "23 h left", "40 min left": posters are deleted 24 hours after they're made. */
+/** "47 h left", "40 min left": posters are deleted 48 hours after they're made. */
 export function timeLeft(createdAt) {
-  const minutes = Math.max(0, Math.round((new Date(createdAt).getTime() + 24 * 3600e3 - Date.now()) / 60000));
-  return minutes >= 60 ? `${Math.floor(minutes / 60)} h left` : `${minutes} min left`;
+  const minutes = Math.max(0, Math.round((new Date(createdAt).getTime() + 48 * 3600e3 - Date.now()) / 60000));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h left` : `${minutes} min left`;   // e.g. "47 h left"
 }
 
 async function downloadPoster(url, poster) {
@@ -303,5 +303,5 @@ export async function postersCard(reload) {
     grid.append(tile);
   }
   return el("section", { class: "card" }, el("h3", {}, `Your posters (${posters.length})`),
-    el("p", { class: "dim" }, "Each poster disappears 24 hours after you share it."), grid);
+    el("p", { class: "dim" }, "Each poster disappears 48 hours after you share it."), grid);
 }

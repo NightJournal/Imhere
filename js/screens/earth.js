@@ -355,7 +355,7 @@ function keepsakesCard(checkIns) {
   return el("section", { class: "card" },
     el("h3", {}, "Posters"),
     el("p", { class: "dim" },
-      "Turn a check-in photo into a poster: pick a style, copy its prompt into the AI app you already use, then upload the result. Posters are shared for 24 hours."),
+      "Turn a check-in photo into a poster: pick a style, copy its prompt into the AI app you already use, then upload the result. Posters are shared for 48 hours."),
     el("div", { style: "margin-top:var(--s4)" }, poster));
 }
 
