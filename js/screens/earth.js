@@ -198,7 +198,7 @@ function keepsakeEditor(checkIns, origins, tripID) {
   const save = el("button", { class: "primary" }, icon("share"), "Save postcard");
   // Post it inside Imhere: seen by the people who can see this trip, for 48 hours.
   const post = el("button", { class: "secondary" }, "Post to Imhere for 48 hours");
-  const postHint = el("p", { class: "dim", style: "margin-top:calc(-1 * var(--s2))" });
+  const postHint = el("p", { class: "dim" });
   const updatePost = () => {
     const can = !!trip?.id;
     post.disabled = !can || !lastCanvas;
@@ -327,8 +327,16 @@ function keepsakeEditor(checkIns, origins, tripID) {
     const postingTrip = trip.id;
     post.disabled = true; post.textContent = "Posting…";
     try {
-      // JPEG keeps it small (a painted PNG can be several MB).
-      const blob = await new Promise((resolve) => lastCanvas.toBlob(resolve, "image/jpeg", 0.88));
+      // JPEG keeps it small (a painted PNG can be several MB). JPEG has no
+      // transparency, so lay the card on paper first — otherwise the
+      // see-through stamp edges turn black.
+      const flat = document.createElement("canvas");
+      flat.width = lastCanvas.width; flat.height = lastCanvas.height;
+      const ctx = flat.getContext("2d");
+      ctx.fillStyle = "#FFFDFA";
+      ctx.fillRect(0, 0, flat.width, flat.height);
+      ctx.drawImage(lastCanvas, 0, 0);
+      const blob = await new Promise((resolve) => flat.toBlob(resolve, "image/jpeg", 0.88));
       if (!blob) throw new Error("Couldn't make the image file");
       await data.postPostcard({ tripId: postingTrip, title: titleInput.value.trim() || titleInput.placeholder, blob });
       toast("Posted. It disappears in 48 hours", "ok");

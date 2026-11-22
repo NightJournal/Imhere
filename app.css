@@ -721,3 +721,5 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .postcard-tile img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px;
   background: var(--rule); box-shadow: var(--shadow-1, 0 2px 8px rgba(0,0,0,.08)); }
 .postcard-tile .dim { margin-top: 6px; }
+.postcard-tile .postcard-caption { margin-top: 6px; font-size: 14.5px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

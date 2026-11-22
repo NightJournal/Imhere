@@ -32,8 +32,9 @@ async function openPostcard(postcard, { own, reload }) {
     };
     actions = [keep, remove];
   }
-  openSheet(postcard.title || "Postcard",
-    el("div", { class: "postcard-stage" }, el("img", { class: "postcard-preview", src: url, alt: postcard.title || "Postcard" })),
+  openSheet("Postcard",
+    el("div", { class: "postcard-stage" }, el("img", { class: "postcard-preview", src: url, alt: postcard.caption || "Postcard" })),
+    postcard.caption ? el("p", { style: "margin-top:var(--s3)" }, postcard.caption) : null,
     el("p", { class: "dim", style: "margin-top:var(--s2)" }, `${timeLeft(postcard.created_at)}, then it's deleted for good.`),
     reactions, ...actions);
   data.reactionsFor("postcard", [postcard.id])
@@ -43,10 +44,10 @@ async function openPostcard(postcard, { own, reload }) {
 
 function grid(postcards, options) {
   return el("div", { class: "postcard-grid" }, postcards.map((postcard) => {
-    const thumb = el("img", { alt: postcard.title || "Postcard", loading: "lazy" });
+    const thumb = el("img", { alt: postcard.caption || "Postcard", loading: "lazy" });
     data.postcardURL(postcard.image_path).then((url) => { if (url) thumb.src = url; });
     const tile = el("button", { class: "postcard-tile", type: "button" }, thumb,
-      el("div", { class: "dim" }, postcard.title || "Postcard"),
+      postcard.caption ? el("div", { class: "postcard-caption" }, postcard.caption) : null,
       el("div", { class: "dim", style: "font-size:12.5px" }, timeLeft(postcard.created_at)));
     tile.onclick = () => openPostcard(postcard, options);
     return tile;
