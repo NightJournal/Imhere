@@ -198,7 +198,7 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
 
   // ---- keep it ----
   const save = el("button", { class: "primary hidden", style: "margin-top:var(--s3)" },
-    "Save to my posters");
+    "Share for 24 hours");
   const download = el("button", { class: "ghost hidden", style: "margin-top:var(--s2)" }, "Download");
 
   save.onclick = async () => {
@@ -208,12 +208,12 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
       const posterBlob = await posterToBlob(posterCanvas);
       await data.savePoster({ checkIn, provider, style: chosenStyle?.id ?? null,
                               posterBlob });
-      toast("Poster saved", "ok");
+      toast("Poster shared. It disappears in 24 hours", "ok");
       closeSheet();
       onSaved();
     } catch (error) {
       toast(error.message, "error");
-      save.disabled = false; save.textContent = "Save to my posters";
+      save.disabled = false; save.textContent = "Share for 24 hours";
     }
   };
 
@@ -247,10 +247,25 @@ export async function openPosterSheet(checkIns, onSaved = () => {}) {
               : "Only available for your most recent check-in with a photo."),
           generate)
       : null,
+    el("p", { class: "dim", style: "margin-top:var(--s3)" },
+      "Posters stay in Imhere for 24 hours, then they're deleted for good. Download it to keep it."),
     save, download);
 }
 
 // ============================================================ gallery
+
+/** "23 h left", "40 min left": posters are deleted 24 hours after they're made. */
+export function timeLeft(createdAt) {
+  const minutes = Math.max(0, Math.round((new Date(createdAt).getTime() + 24 * 3600e3 - Date.now()) / 60000));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h left` : `${minutes} min left`;
+}
+
+async function downloadPoster(url, poster) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `poster-${cityOnly(poster.place_name).toLowerCase().replace(/\s+/g, "-")}.${(poster.poster_path || "").endsWith(".png") ? "png" : "jpg"}`;
+  document.body.append(link); link.click(); link.remove();
+}
 
 export async function postersCard(reload) {
   const posters = await data.myPosters();
@@ -262,10 +277,13 @@ export async function postersCard(reload) {
     data.posterURL(poster.poster_path).then((url) => { if (url) thumb.src = url; });
     const tile = el("button", { class: "poster-tile", type: "button" },
       thumb,
-      el("div", { class: "dim" }, `${flagEmoji(poster.country_code)} ${cityOnly(poster.place_name)}`.trim()));
+      el("div", { class: "dim" }, `${flagEmoji(poster.country_code)} ${cityOnly(poster.place_name)}`.trim()),
+      el("div", { class: "dim", style: "font-size:12.5px" }, timeLeft(poster.created_at)));
     tile.onclick = async () => {
       const url = await data.posterURL(poster.poster_path);
       if (!url) { toast("Couldn't open that poster", "error"); return; }
+      const keep = el("button", { class: "secondary", style: "margin-top:var(--s3)" }, "Download to keep");
+      keep.onclick = () => downloadPoster(url, poster);
       const remove = el("button", { class: "danger", style: "margin-top:var(--s4)" }, icon("trash"), "Delete this poster");
       remove.onclick = async () => {
         if (!(await confirmSheet("Delete this poster?", cityOnly(poster.place_name)))) return;
@@ -277,10 +295,13 @@ export async function postersCard(reload) {
       };
       const reactions = el("div", { style: "margin-top:var(--s3)" });
       openSheet(cityOnly(poster.place_name),
-        el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: "" })), reactions, remove);
+        el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: "" })),
+        el("p", { class: "dim", style: "margin-top:var(--s2)" }, `${timeLeft(poster.created_at)}, then it's deleted for good.`),
+        reactions, keep, remove);
       fillReactions("poster", [{ id: poster.id, slot: reactions, own: true }]);
     };
     grid.append(tile);
   }
-  return el("section", { class: "card" }, el("h3", {}, `Your posters (${posters.length})`), grid);
+  return el("section", { class: "card" }, el("h3", {}, `Your posters (${posters.length})`),
+    el("p", { class: "dim" }, "Each poster disappears 24 hours after you share it."), grid);
 }

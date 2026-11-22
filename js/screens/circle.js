@@ -11,6 +11,7 @@ import { mountGlobe } from "../globe.js";
 import { reverseGeocode } from "../geo.js";
 import { groupsCard } from "./groups.js";
 import { reactionSlot, fillReactions, reactionBar } from "../reactions.js";
+import { timeLeft } from "./posters.js";
 
 let friendGlobe = null;
 
@@ -180,7 +181,8 @@ async function friendView(container, traveller, back) {
           const thumb = el("img", { alt: `Poster of ${cityOnly(poster.place_name)}`, loading: "lazy" });
           data.posterURL(poster.poster_path).then((url) => { if (url) thumb.src = url; });
           const tile = el("button", { class: "poster-tile", type: "button" }, thumb,
-            el("div", { class: "dim" }, `${flagEmoji(poster.country_code)} ${cityOnly(poster.place_name)}`.trim()));
+            el("div", { class: "dim" }, `${flagEmoji(poster.country_code)} ${cityOnly(poster.place_name)}`.trim()),
+            el("div", { class: "dim", style: "font-size:12.5px" }, timeLeft(poster.created_at)));
           tile.onclick = async () => {
             const url = await data.posterURL(poster.poster_path);
             if (!url) { toast("Couldn't open that poster", "error"); return; }
