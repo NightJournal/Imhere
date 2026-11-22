@@ -12,6 +12,7 @@ import { reverseGeocode } from "../geo.js";
 import { groupsCard } from "./groups.js";
 import { reactionSlot, fillReactions, reactionBar } from "../reactions.js";
 import { timeLeft } from "./posters.js";
+import { friendPostcardsCard } from "./shared-postcards.js";
 
 let friendGlobe = null;
 
@@ -215,7 +216,11 @@ async function friendView(container, traveller, back) {
         el("div", { style: "display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0" },
           avatarElement(traveller.display_name, avatarURL),
           el("h2", { style: "font-size:24px" }, traveller.display_name || "Traveller")),
-        liveCard, latestCard, planCards, posterCard, history)));
+        liveCard, latestCard, planCards, el("div", { class: "friend-postcards-slot" }), posterCard, history)));
+  data.friendPostcards(traveller.id).then((list) => {
+    const card = friendPostcardsCard(list);
+    if (card) container.querySelector(".friend-postcards-slot")?.replaceWith(card);
+  }).catch(() => {});
   fillReactions("checkin", checkInSlots);
   fillReactions("plan", planSlots);
   closeFriendGlobe();

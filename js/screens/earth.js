@@ -12,6 +12,7 @@ import { placeField, reverseGeocode } from "../geo.js";
 import { app, setSubtitle, refreshProfile, go } from "../app.js";
 import { loadCountries, ensureFonts, makePostcard, canvasToBlob, defaultTitle } from "../postcard.js";
 import { openPosterSheet, postersCard } from "./posters.js";
+import { myPostcardsCard } from "./shared-postcards.js";
 import { mountGlobe } from "../globe.js";
 import { isNetworkError } from "../outbox.js";
 import { reactionSlot, fillReactions } from "../reactions.js";
@@ -195,6 +196,18 @@ function keepsakeEditor(checkIns, origins, tripID) {
   const stage = el("div", { class: "postcard-stage" }, preview);
   const status = el("p", { class: "dim", role: "status", style: "text-align:center" }, "Drawing…");
   const save = el("button", { class: "primary" }, icon("share"), "Save postcard");
+  // Post it inside Imhere: seen by the people who can see this trip, for 48 hours.
+  const post = el("button", { class: "secondary" }, "Post to Imhere for 48 hours");
+  const postHint = el("p", { class: "dim", style: "margin-top:calc(-1 * var(--s2))" });
+  const updatePost = () => {
+    const can = !!trip?.id;
+    post.disabled = !can || !lastCanvas;
+    postHint.textContent = can
+      ? (trip.id === app.profile?.current_trip_id
+          ? "Seen by your circle and friend groups, like this trip's check-ins. Gone after 48 hours."
+          : "Seen only by people who can see this past trip (Past trips on). Gone after 48 hours.")
+      : "Only trip postcards can be posted. Check-ins outside a trip stay private.";
+  };
 
   // ---- which trip ----
   const picker = el("select", { "aria-label": "Trip" });
@@ -230,7 +243,7 @@ function keepsakeEditor(checkIns, origins, tripID) {
   const onType = () => { saveWords(); clearTimeout(typingTimer); typingTimer = setTimeout(draw, 350); };
   titleInput.addEventListener("input", onType);
   placesInput.addEventListener("input", onType);
-  picker.onchange = () => { trip = trips[Number(picker.value)]; loadWords(); draw(); };
+  picker.onchange = () => { trip = trips[Number(picker.value)]; loadWords(); updatePost(); draw(); };
 
   // ---- which format ----
   const formats = [["keepsake", "Postcard", "landscape"], ["story", "Story", "story"], ["landscape", "Landscape", "landscape"]];
@@ -291,6 +304,7 @@ function keepsakeEditor(checkIns, origins, tripID) {
       preview.src = lastCanvas.toDataURL("image/png");
       status.classList.add("hidden");
       save.disabled = false;
+      updatePost();
     } catch (error) {
       status.textContent = error.message;
     }
@@ -308,6 +322,26 @@ function keepsakeEditor(checkIns, origins, tripID) {
     save.disabled = false;
   };
 
+  post.onclick = async () => {
+    if (!lastCanvas || !trip?.id) return;
+    const postingTrip = trip.id;
+    post.disabled = true; post.textContent = "Posting…";
+    try {
+      // JPEG keeps it small (a painted PNG can be several MB).
+      const blob = await new Promise((resolve) => lastCanvas.toBlob(resolve, "image/jpeg", 0.88));
+      if (!blob) throw new Error("Couldn't make the image file");
+      await data.postPostcard({ tripId: postingTrip, title: titleInput.value.trim() || titleInput.placeholder, blob });
+      toast("Posted. It disappears in 48 hours", "ok");
+      if (document.querySelector("#sheet")?.contains(post)) closeSheet();
+      if (app.tab === "earth") go("earth");
+    } catch (error) {
+      toast(error.message || "Couldn't post it", "error");
+    }
+    post.textContent = "Post to Imhere for 48 hours";
+    updatePost();
+  };
+  updatePost();
+
   const element = el("div", { class: "stack keepsake" },
     el("label", { class: "field" }, el("span", { class: "label" }, "Trip"), picker),
     segmented,
@@ -318,7 +352,7 @@ function keepsakeEditor(checkIns, origins, tripID) {
       el("label", { class: "field" }, el("span", { class: "label" }, "Title"), titleInput),
       el("label", { class: "field" }, el("span", { class: "label" }, "Places"), placesInput),
       el("label", { class: "field" }, el("span", { class: "label" }, "Postcard photo"), photoInput))),
-    save,
+    save, post, postHint,
     el("div", {},
       toggleRow("Photo", true, (on) => { options.photo = on; draw(); }),
       toggleRow("Distance travelled", true, (on) => { options.distance = on; draw(); }),
@@ -703,9 +737,13 @@ async function render(container) {
           tripCard(profile, origins, checkIns, reload),
           keepsakesCard(checkIns),
           historyList(checkIns, profile?.current_trip_id, reload),
+          el("div", { class: "postcards-slot" }),
           el("div", { class: "posters-slot" }))),
       panel));
 
+  myPostcardsCard(reload).then((card) => {
+    if (card) container.querySelector(".postcards-slot")?.replaceWith(card);
+  }).catch(() => {});
   postersCard(reload).then((card) => {
     if (card) container.querySelector(".posters-slot")?.replaceWith(card);
   }).catch(() => {});

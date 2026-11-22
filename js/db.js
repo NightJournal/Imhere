@@ -704,11 +704,54 @@ export async function deletePoster(poster) {
   return unwrap(await db.from("posters").delete().eq("id", poster.id));
 }
 
+// ============================================================ posted postcards
+// A postcard posted to Imhere: seen by the people who can see that trip,
+// deleted after 48 hours (the database hides it and an hourly job removes it).
+
+const POSTCARD_BUCKET = "postcards";
+
+export async function postPostcard({ tripId, title, blob }) {
+  if (!tripId) throw new Error("Only postcards of a trip can be posted.");
+  const user = await currentUser();
+  const path = `${user.id}/${crypto.randomUUID()}.jpg`;
+  const { error } = await db.storage.from(POSTCARD_BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+  const { data, error: rowError } = await db.from("postcards")
+    .insert({ user_id: user.id, trip_id: tripId, title: title?.slice(0, 120) || null, image_path: path })
+    .select().single();
+  if (rowError) { await db.storage.from(POSTCARD_BUCKET).remove([path]); throw rowError; }
+  return data;
+}
+
+export async function myPostcards() {
+  const user = await currentUser();
+  return unwrap(await db.from("postcards").select("*").eq("user_id", user.id)
+    .order("created_at", { ascending: false })) ?? [];
+}
+
+export async function friendPostcards(ownerID) {
+  return (await db.from("postcards").select("*").eq("user_id", ownerID)
+    .order("created_at", { ascending: false })).data ?? [];
+}
+
+export async function postcardURL(path) {
+  if (!path) return null;
+  const { data, error } = await db.storage.from(POSTCARD_BUCKET).download(path);
+  if (error || !data) return null;
+  return URL.createObjectURL(data);
+}
+
+export async function deletePostcard(postcard) {
+  await db.storage.from(POSTCARD_BUCKET).remove([postcard.image_path]);
+  return unwrap(await db.from("postcards").delete().eq("id", postcard.id));
+}
+
 // ============================================================ reactions
-// One emoji per person on a check-in, plan or poster. Row rules in the
+// One emoji per person on a check-in, plan, poster or postcard. Row rules in the
 // database decide who can see and add them.
 
-const REACTION_COLUMN = { checkin: "check_in_id", plan: "plan_id", poster: "poster_id" };
+const REACTION_COLUMN = { checkin: "check_in_id", plan: "plan_id", poster: "poster_id", postcard: "postcard_id" };
 
 /** Reactions for many things at once → Map(id → [reaction]). */
 export async function reactionsFor(kind, ids) {

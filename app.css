@@ -714,3 +714,10 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .react-who { margin-top: 4px; font-size: 13px; }
 .react-x { width: 24px; height: 24px; min-height: 24px; padding: 0; margin-left: 2px; border: 0;
   background: none; color: var(--ink); cursor: pointer; font-size: 16px; line-height: 1; }
+
+/* Posted postcards */
+.postcard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); }
+.postcard-tile { appearance: none; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; width: auto; min-height: 0; }
+.postcard-tile img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px;
+  background: var(--rule); box-shadow: var(--shadow-1, 0 2px 8px rgba(0,0,0,.08)); }
+.postcard-tile .dim { margin-top: 6px; }
