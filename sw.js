@@ -3,7 +3,7 @@
 // signal. Bump CACHE_VERSION whenever you change any file below,
 // otherwise browsers keep serving the old copy.
 // ---------------------------------------------------------------
-const CACHE_VERSION = "imhere-v72";
+const CACHE_VERSION = "imhere-v73";
 
 const SHELL = [
   "./assets/postcard-world-original.png", "./assets/watercolor-world.png", "./assets/watercolor-paper.png", "./assets/watercolor-stand-logo.png", "./assets/peach-blossoms.png",

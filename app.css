@@ -736,3 +736,9 @@ button.primary:hover { background: linear-gradient(125deg,#b497d1,#9779bc); }
 .feed-image-button { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; margin-top: 8px; min-height: 0; }
 .feed-image { display: block; width: 100%; max-height: 460px; object-fit: contain; border-radius: 14px; background: var(--paper-2); }
 .invite-details > summary { cursor: pointer; font-weight: 700; color: var(--accent-ink); padding: 4px 0; list-style-position: inside; }
+
+/* Group pictures */
+.group-face { flex: 0 0 auto; display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden;
+  background: var(--accent-soft); color: var(--accent-ink); font-weight: 800; }
+.group-face img { width: 100%; height: 100%; object-fit: cover; }
+.group-icon-row { display: flex; align-items: center; gap: var(--s4); margin-bottom: var(--s3); }

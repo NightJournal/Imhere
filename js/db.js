@@ -517,6 +517,38 @@ export async function myGroups() {
       avatar_path: m.profiles?.avatar_path || null })) }));
 }
 
+// Group icons: group-icons/<group id>.jpg, set by the creator, seen by members.
+const GROUP_ICON_BUCKET = "group-icons";
+const groupIconCache = new Map();
+
+export async function groupIconURL(group) {
+  if (!group?.icon_path) return null;
+  const key = `${group.icon_path}?${group.icon_version || ""}`;
+  if (groupIconCache.has(key)) return groupIconCache.get(key);
+  const promise = db.storage.from(GROUP_ICON_BUCKET).download(group.icon_path)
+    .then(({ data, error }) => (error || !data ? null : URL.createObjectURL(data)))
+    .catch(() => null);
+  groupIconCache.set(key, promise);
+  return promise;
+}
+
+export async function setGroupIcon(groupId, blob) {
+  const path = `${groupId}.jpg`;
+  const { error } = await db.storage.from(GROUP_ICON_BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+  if (error) throw error;
+  const outcome = unwrap(await db.rpc("set_group_icon", { grp: groupId, has_icon: true }));
+  if (outcome !== "ok") throw new Error("Only the person who started the group can change its picture.");
+  for (const key of [...groupIconCache.keys()]) if (key.startsWith(path)) groupIconCache.delete(key);
+}
+
+export async function removeGroupIcon(groupId) {
+  const outcome = unwrap(await db.rpc("set_group_icon", { grp: groupId, has_icon: false }));
+  if (outcome !== "ok") throw new Error("Only the person who started the group can change its picture.");
+  await db.storage.from(GROUP_ICON_BUCKET).remove([`${groupId}.jpg`]).catch(() => {});
+  for (const key of [...groupIconCache.keys()]) if (key.startsWith(`${groupId}.jpg`)) groupIconCache.delete(key);
+}
+
 export async function createGroup(name, endsAt) {
   return unwrap(await db.rpc("create_group", { group_name: name, ends: endsAt }));
 }
@@ -583,6 +615,8 @@ export async function removeEndedGroup(groupId) {
 
 /** After a group has ended: the creator deletes it for every member. */
 export async function deleteGroupForEveryone(groupId) {
+  // The icon file can only be removed through Storage, so do it first.
+  await db.storage.from(GROUP_ICON_BUCKET).remove([`${groupId}.jpg`]).catch(() => {});
   const outcome = unwrap(await db.rpc("delete_group_for_everyone", { grp: groupId }));
   if (outcome !== "ok") throw new Error(outcome === "still_running" ? "End the group first." : "Only the person who started the group can delete it for everyone.");
 }

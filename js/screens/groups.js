@@ -14,6 +14,7 @@ import * as data from "../db.js";
 import { app } from "../app.js";
 import { groupPostcardsSection } from "./shared-postcards.js";
 import { feedCard } from "./feed.js";
+import { cropImage } from "../cropper.js";
 
 const day = (iso) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 const isoDate = (d) => d.toISOString().slice(0, 10);
@@ -26,6 +27,14 @@ function memberNames(group) {
   const more = others.length - shown.length;
   const parts = [...shown, ...(more > 0 ? [`${more} more`] : []), ...(group.members.some((m) => m.member_id === me) ? ["you"] : [])];
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0] || "";
+}
+
+/** The group's round picture: its icon, or its first letter. */
+function groupFace(group, size = 40) {
+  const face = el("span", { class: "group-face", style: `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px`,
+    "aria-hidden": "true" }, (group.name || "?").trim().charAt(0).toUpperCase());
+  data.groupIconURL(group).then((url) => { if (url) fill(face, el("img", { src: url, alt: "" })); });
+  return face;
 }
 
 /** The "Groups" card on the Circle screen. */
@@ -41,11 +50,12 @@ export async function groupsCard({ reload, openMember }) {
   const row = (group) => {
     const button = el("button", { class: "list-row rowline", type: "button",
       style: "width:100%;background:none;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left" },
+      el("span", { style: "display:flex;align-items:center;gap:var(--s3);min-width:0" }, groupFace(group),
       el("span", { style: "min-width:0" },
         el("span", { style: "display:block;font-weight:700" }, group.name),
         el("span", { class: "dim", style: "display:block" }, memberNames(group)),
         el("span", { class: "dim", style: "display:block;font-size:13px" }, !group.active ? `Ended ${day(group.ends_at)}`
-          : group.kind === "friends" ? "Friend group" : `Travel group until ${day(group.ends_at)}`)),
+          : group.kind === "friends" ? "Friend group" : `Travel group until ${day(group.ends_at)}`))),
       el("span", { class: "pill " + (group.active ? "live" : "quiet") },
         !group.active ? "Ended" : group.kind === "friends" ? "Friends" : "Travel"));
     button.onclick = () => groupSheet(group, { reload, openMember });
@@ -226,7 +236,35 @@ function groupSheet(group, { reload, openMember }) {
     catch (error) { toast(error.message, "error"); }
   };
 
+  // Group picture: the creator can choose, change or remove it.
+  let iconRow = null;
+  if (group.active) {
+    const face = groupFace(group, 64);
+    const pick = el("input", { type: "file", accept: "image/*", class: "hidden", "aria-label": "Choose a group picture" });
+    const change = isCreator ? el("button", { class: "secondary", type: "button", style: "width:auto" },
+      group.icon_path ? "Change picture" : "Add a group picture") : null;
+    const clear = isCreator && group.icon_path ? el("button", { class: "ghost", type: "button", style: "width:auto" }, "Remove") : null;
+    if (change) change.onclick = () => pick.click();
+    pick.onchange = async () => {
+      const file = pick.files?.[0]; pick.value = ""; if (!file) return;
+      const blob = await cropImage(file, { aspect: 1, round: true, outWidth: 256, title: "Crop the group picture",
+        hint: "Drag to move, pinch or use the slider to zoom. Everyone in the group sees this." });
+      if (!blob) return;
+      try { await data.setGroupIcon(group.id, blob); group.icon_path = `${group.id}.jpg`; group.icon_version = Date.now();
+        toast("Group picture saved", "ok"); closeSheet(); reload(); }
+      catch (error) { toast(error.message, "error"); }
+    };
+    if (clear) clear.onclick = async () => {
+      try { await data.removeGroupIcon(group.id); toast("Picture removed", "ok"); closeSheet(); reload(); }
+      catch (error) { toast(error.message, "error"); }
+    };
+    iconRow = el("div", { class: "group-icon-row" }, face,
+      isCreator ? el("div", { class: "button-row", style: "margin:0" }, change, clear, pick)
+        : el("span", { class: "dim" }, "Only the person who started the group can change its picture."));
+  }
+
   openSheet(group.name,
+    iconRow,
     el("p", { class: "dim", style: "margin-bottom:var(--s3)" },
       !group.active ? "This group has ended. Nobody in it can see the others any more."
         : friends ? "Friend group, no end date. Members see each other's current trip and live location."
