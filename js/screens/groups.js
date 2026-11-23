@@ -13,6 +13,7 @@ import { el, fill, toast, openSheet, closeSheet, confirmSheet, icon, avatarEleme
 import * as data from "../db.js";
 import { app } from "../app.js";
 import { groupPostcardsSection } from "./shared-postcards.js";
+import { feedCard } from "./feed.js";
 
 const day = (iso) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 const isoDate = (d) => d.toISOString().slice(0, 10);
@@ -180,9 +181,13 @@ function groupSheet(group, { reload, openMember }) {
         inviteBlock(group))
     : null;
 
-  // Postcards the members have posted (those you're allowed to see).
+  // The group's updates (check-ins, postcards, posters, plans, live), newest
+  // first, then the postcards on their own. Only what you're allowed to see.
+  const updatesSlot = el("div");
   const postcardsSlot = el("div");
   if (group.active) {
+    feedCard((person) => { closeSheet(); openMember(person); }, { members: group.members })
+      .then((card) => { if (card) updatesSlot.replaceWith(card); }).catch(() => {});
     const names = new Map(group.members.map((m) => [m.member_id, m.display_name]));
     data.postcardsOf(group.members.map((m) => m.member_id)).then((list) => {
       const section = groupPostcardsSection(list, { me, names, reload });
@@ -226,6 +231,7 @@ function groupSheet(group, { reload, openMember }) {
       !group.active ? "This group has ended. Nobody in it can see the others any more."
         : friends ? "Friend group, no end date. Members see each other's current trip and live location."
         : `Travel group, runs until ${new Date(group.ends_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`),
+    updatesSlot,
     el("section", { class: "card" }, el("h3", {}, `People (${group.members.length})`), members),
     postcardsSlot,
     group.active && friends ? el("section", { class: "card" },

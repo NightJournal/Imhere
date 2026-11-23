@@ -3,7 +3,7 @@
 // posted postcards, posters, shared plans and live sharing — newest
 // first, with reactions. Tap a name to open that person.
 // ---------------------------------------------------------------
-import { el, fill, staleness, cityOnly, flagEmoji, avatarElement, TRANSPORT, toast, openSheet } from "../ui.js";
+import { el, fill, staleness, cityOnly, flagEmoji, avatarElement, TRANSPORT, toast, openSheet, closeSheet, onSheetClose, stashSheet } from "../ui.js";
 import * as data from "../db.js";
 import { go } from "../app.js";
 import { reactionSlot, fillReactions } from "../reactions.js";
@@ -27,16 +27,19 @@ function lazyImage(load, attrs) {
 }
 
 function openImage(title, url, caption) {
+  const restore = stashSheet();   // opened from a group: go back to it afterwards
   openSheet(title,
     el("div", { class: "postcard-stage tall" }, el("img", { class: "postcard-preview", src: url, alt: caption || "" })),
     caption ? el("p", { style: "margin-top:var(--s3)" }, caption) : null);
+  onSheetClose(() => restore?.());
 }
 
 /**
  * The feed card. openPerson(person) opens their page.
+ * members: show one group's updates (inside the group) instead of the people I follow.
  */
-export async function feedCard(openPerson) {
-  const { people, items } = await data.circleFeed({ days: DAYS });
+export async function feedCard(openPerson, { members = null } = {}) {
+  const { people, items } = await data.circleFeed({ days: DAYS, members });
   if (!people.size) return null;   // nobody to follow yet: the rest of the page explains
 
   const slots = { checkin: [], plan: [], poster: [], postcard: [] };
@@ -86,7 +89,7 @@ export async function feedCard(openPerson) {
     } else if (item.kind === "plan") {
       const stops = (r.plan_stops || []).slice().sort((a, b) => a.order_index - b.order_index);
       const edit = r.collaborative ? el("button", { class: "secondary", type: "button", style: "margin-top:8px" }, "Edit together in Plans") : null;
-      if (edit) edit.onclick = () => go("plans");
+      if (edit) edit.onclick = () => { closeSheet(); go("plans"); };
       body = [
         el("div", { class: "dim" }, r.updated_at && r.updated_by !== r.user_id ? "Plan updated" : "Shared a plan"),
         el("div", { class: "place" }, `${r.destination} · ${shortDate(r.start_date)}–${shortDate(r.end_date)}`),
@@ -107,6 +110,8 @@ export async function feedCard(openPerson) {
 
   return el("section", { class: "card feed" },
     el("h3", {}, "Updates"),
+    members ? el("p", { class: "dim" }, `What the group has shared in the last ${DAYS} days.`) : null,
     rows.length ? rows
-      : el("p", { class: "dim" }, `Nothing new from your people in the last ${DAYS} days.`));
+      : el("p", { class: "dim" }, members ? `Nothing new in this group in the last ${DAYS} days.`
+          : `Nothing new from people you follow in the last ${DAYS} days. Updates from group members are inside each group.`));
 }

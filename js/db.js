@@ -640,16 +640,20 @@ export async function friendsOnEarth() {
 // Recent updates from everyone I can see (people I follow + my groups),
 // newest first. Row rules decide what each query returns.
 
-export async function circleFeed({ days = 7, limit = 40 } = {}) {
+export async function circleFeed({ days = 7, limit = 40, members = null } = {}) {
+  // members: [{ member_id, display_name, avatar_path }] to show one group's
+  // updates; otherwise the people I follow (my circle feed). People who are
+  // only in a group with me show up inside that group, not here.
   const me = (await currentUser())?.id;
-  const [travellers, groups] = await Promise.all([myTravellers().catch(() => []), myGroups().catch(() => [])]);
   const people = new Map();
-  for (const t of travellers) people.set(t.id, { id: t.id, display_name: t.display_name || "Friend", avatar_path: t.avatar_path });
-  for (const g of groups.filter((g) => g.active)) {
-    for (const m of g.members) {
-      if (m.member_id === me || people.has(m.member_id)) continue;
-      people.set(m.member_id, { id: m.member_id, display_name: m.display_name, avatar_path: m.avatar_path });
+  if (members) {
+    for (const m of members) {
+      if (m.member_id === me) continue;
+      people.set(m.member_id, { id: m.member_id, display_name: m.display_name || "Friend", avatar_path: m.avatar_path });
     }
+  } else {
+    const travellers = await myTravellers().catch(() => []);
+    for (const t of travellers) people.set(t.id, { id: t.id, display_name: t.display_name || "Friend", avatar_path: t.avatar_path });
   }
   const ids = [...people.keys()];
   if (!ids.length) return { people, items: [] };
